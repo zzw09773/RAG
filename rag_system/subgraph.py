@@ -9,10 +9,8 @@ from langgraph.graph import StateGraph
 
 from .state import GraphState
 from .config import RAGConfig
-from .tool import create_retrieve_tool, create_router_tool, create_metadata_search_tool, create_datcom_calculator_tools
+from .tool import create_retrieve_tool, create_router_tool, create_metadata_search_tool
 from .node import create_agent_node
-from .router_node import create_intent_router_node
-from .datcom_node import create_datcom_sequence_node
 from .agent import build_workflow
 from .common import log
 
@@ -22,24 +20,23 @@ def create_rag_subgraph(
     config: RAGConfig,
     name: str = "rag_agent"
 ) -> StateGraph:
-    """Create a RAG agent subgraph that can be embedded in a parent graph.
+    """Create a legal document RAG subgraph for parent graph integration.
 
-    This function wraps the existing RAG agent workflow into a subgraph-compatible
+    This function wraps the RAG agent workflow into a subgraph-compatible
     format that can be added as a node to a parent StateGraph.
 
     Args:
-        llm: The language model to use for the agent
+        llm: The language model for the agent
         config: RAG system configuration
-        name: Name for the subgraph (default: "rag_agent")
+        name: Name for the subgraph
 
     Returns:
-        Compiled StateGraph that can be used as a subgraph node
+        Compiled StateGraph for use as a subgraph node
     """
-    log(f"Creating RAG subgraph: {name}")
+    log(f"Creating legal document RAG subgraph: {name}")
 
-    # 1. Create tools
-    # Tools for the general agent
-    general_tools = [
+    # Create tools for document retrieval and reasoning
+    tools = [
         create_router_tool(llm, config.conn_string),
         create_retrieve_tool(
             conn_str=config.conn_string,
@@ -52,25 +49,14 @@ def create_rag_subgraph(
         ),
         create_metadata_search_tool(conn_str=config.conn_string)
     ]
-    
-    # DATCOM tools are used by both the general agent (for simple queries)
-    # and the specialized DATCOM node.
-    datcom_tools = create_datcom_calculator_tools()
-    all_tools = general_tools + datcom_tools
 
-    # 2. Create nodes
-    router_node = create_intent_router_node(llm)
-    datcom_node = create_datcom_sequence_node(llm)
-    general_agent_node = create_agent_node(llm, all_tools)
+    # Create general agent node (direct entry point)
+    general_agent_node = create_agent_node(llm, tools)
 
-    # 3. Build and compile the branching workflow
-    workflow = build_workflow(
-        router_node=router_node,
-        datcom_node=datcom_node,
-        general_agent_node=general_agent_node
-    )
+    # Build and compile the workflow
+    workflow = build_workflow(general_agent_node)
 
-    log(f"RAG subgraph '{name}' created successfully with routing")
+    log(f"Legal document RAG subgraph '{name}' created successfully")
     return workflow
 
 

@@ -104,43 +104,28 @@ python query_rag_pg.py --collection <your_document_name>
 
 ```mermaid
 graph TB
-    Start([User Query]) --> Router{Intent Router}
-    
-    Router -->|DATCOM Generation| DatcomFlow[DATCOM Fixed Sequence]
-    Router -->|General Query| GeneralFlow[ReAct Agent]
-    
-    subgraph "DATCOM Generation Flow"
-        DatcomFlow --> Extract[Parameter Extraction<br/>LLM + JSON Parser]
-        Extract --> Tool1[convert_wing_to_datcom]
-        Tool1 --> Tool2[generate_fltcon_matrix]
-        Tool2 --> Tool3[calculate_synthesis_positions]
-        Tool3 --> Tool4[define_body_geometry]
-        Tool4 --> Format[.dat File Formatting]
-    end
-    
-    subgraph "General Query Flow"
-        GeneralFlow --> Think[LLM Reasoning]
+    Start([User Query]) --> Agent[ReAct Agent]
+
+    subgraph "Legal Document Query Flow"
+        Agent --> Think[LLM Reasoning]
         Think --> Action{Select Action}
-        Action -->|Route| RouterTool[router_tool]
+        Action -->|Route| RouterTool[select_collection]
         Action -->|Retrieve| RetrieveTool[retrieve_documents]
         Action -->|Search| MetadataTool[metadata_search]
         Action -->|Calculate| CalcTool[calculator_tool]
-        
+
         RouterTool --> Observe[Observe Results]
         RetrieveTool --> Observe
         MetadataTool --> Observe
         CalcTool --> Observe
-        
+
         Observe --> Think
-        Action -->|Finish| Generate[Generate Answer]
+        Action -->|Finish| Generate[Generate Answer with Citations]
     end
-    
-    Format --> End([Return Result])
-    Generate --> End
-    
-    style Router fill:#ff6b6b
-    style DatcomFlow fill:#4ecdc4
-    style GeneralFlow fill:#95e1d3
+
+    Generate --> End([Return Result])
+
+    style Agent fill:#95e1d3
     style End fill:#f38181
 ```
 

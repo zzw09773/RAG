@@ -20,12 +20,10 @@ from langchain_openai import ChatOpenAI
 from .common import log, set_quiet_mode
 from .state import GraphState
 from .config import RAGConfig, DEFAULT_TOP_K
-from .tool import create_retrieve_tool, create_router_tool, create_metadata_search_tool, create_datcom_calculator_tools
+from .tool import create_retrieve_tool, create_router_tool, create_metadata_search_tool
 from .tool.calculator import create_calculator_tool
 from .tool.shared import get_vectorstore
 from .node import create_agent_node
-from .router_node import create_intent_router_node
-from .datcom_node import create_datcom_sequence_node
 from .agent import build_workflow
 
 
@@ -107,12 +105,16 @@ class RagApplication:
         )
 
     def build_graph(self):
-        """Build the LangGraph workflow."""
+        """Build the LangGraph workflow for legal document RAG.
+
+        Creates a ReAct agent with tools for document retrieval,
+        metadata search, and mathematical calculations.
+        """
         # Get configurable parameters
         top_k = getattr(self.args, 'top_k', DEFAULT_TOP_K)
         content_max_length = getattr(self.args, 'content_max_length', 800)
 
-        # Create tools
+        # Create tools for legal document retrieval and reasoning
         router_tool = create_router_tool(self.llm, self.args.conn)
         retrieve_tool = create_retrieve_tool(
             conn_str=self.args.conn,
@@ -127,20 +129,15 @@ class RagApplication:
             conn_str=self.args.conn
         )
         calculator_tool = create_calculator_tool()
-        
-        # Create DATCOM calculator tools
-        datcom_tools = create_datcom_calculator_tools()
-        
-        # Combine all tools
-        tools = [router_tool, retrieve_tool, metadata_search_tool, calculator_tool] + datcom_tools
 
-        # Create agent nodes
-        router_node = create_intent_router_node(self.llm)
-        datcom_node = create_datcom_sequence_node(self.llm)
+        # Combine all tools
+        tools = [router_tool, retrieve_tool, metadata_search_tool, calculator_tool]
+
+        # Create general agent node (direct entry point)
         general_agent_node = create_agent_node(self.llm, tools)
 
         # Build workflow
-        return build_workflow(router_node, datcom_node, general_agent_node)
+        return build_workflow(general_agent_node)
 
     def run(self):
         """Main entry point for the agent application."""
