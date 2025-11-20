@@ -62,9 +62,12 @@ rag_system/
 ├── application/             # Chunking & hierarchical retrieval use cases
 ├── domain/                  # Entities/value objects
 ├── infrastructure/          # Postgres repositories & schema helpers
-├── build/                   # Indexing and preprocessing pipeline
+├── legacy/
+│   ├── build/                   # Legacy indexing and preprocessing pipeline
+│   └── query_rag_pg.py          # Legacy CLI
 └── notebooks/
-    └── legal_rag_workflow.ipynb  # Primary interactive entry point
+    ├── 1_build_index.ipynb       # Indexing entry point
+    └── 2_query_verify.ipynb      # Query + verification entry point
 ```
 
 ### Module Responsibilities
@@ -75,36 +78,32 @@ rag_system/
 | `agent.py` | Builds the LangGraph state graph and wires agent nodes. | 
 | `node.py` | Implements the ReAct reasoning loop, formatting logic, and error handling. | 
 | `tool/` | LangChain-compatible tools (router, flat/hierarchical retrieval, metadata search, calculator). | 
-| `build/` | Offline preprocessing + indexing pipeline for PGVector. |
+| `application/` | Clean Architecture use cases (indexing, retrieval, chunking). |
+| `legacy/build/` | Offline preprocessing + indexing pipeline preserved for backward compatibility. |
 | `notebooks/` | Default developer UX for interactive experimentation. |
-| `query_rag_pg.py` | Legacy CLI maintained for automation compatibility. |
+| `legacy/query_rag_pg.py` | Legacy CLI maintained for automation compatibility. |
 
 ---
 
-## 🔧 Building the Index (`build_all.sh`)
+## 🔧 Building the Index (Notebook-first)
 
-The `build_all.sh` script is the primary way to build and manage the vector database.
+Preferred path：`notebooks/1_build_index.ipynb`。流程透過 `scripts/init_hierarchical_schema.py` 與 `scripts/index_hierarchical.py` 呼叫 Clean Architecture 用例，建立階層式索引。
 
-### Usage
+### CLI equivalents
 
-- **Incremental Build (Default)**: Processes new documents and skips existing database collections.
+- 初始化 Schema
   ```bash
-  ./build_all.sh
-  ```
-- **Force Rebuild**: Deletes and rebuilds all collections from scratch. Use this if you change the chunking strategy or embedding model.
-  ```bash
-  ./build_all.sh --force
-  ```
-- **Rebuild Only**: Skips the document preprocessing step and rebuilds the index from existing Markdown files.
-  ```bash
-  ./build_all.sh --rebuild-only
+  python scripts/init_hierarchical_schema.py --conn $PGVECTOR_URL
   ```
 
-### Data Flow
+- 遞迴索引資料夾
+  ```bash
+  python scripts/index_hierarchical.py data/ --recursive --conn $PGVECTOR_URL --force
+  ```
 
-1.  **Input**: Documents in `rag_system/documents/`
-2.  **Preprocess**: `preprocess.py` converts files to clean Markdown, output to `rag_system/processed_md/`.
-3.  **Index**: `indexer.py` chunks the Markdown, generates embeddings, and stores them in the PostgreSQL database.
+### Legacy path
+
+`rag_system/legacy/build_all.sh` 與 `rag_system/legacy/build/` 仍保留以免破壞舊流程，但不再建議使用。
 
 ---
 

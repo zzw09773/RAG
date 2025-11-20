@@ -18,7 +18,7 @@
 ## 📊 目前進度
 - **階段**: Phase 1 (現代化基礎) 開發中。
 - **已完成**:
-  - `workflow.py` 模組化，Notebook (`notebooks/legal_rag_workflow.ipynb`) 成為主工作流。
+  - `workflow.py` 模組化，Notebook (`notebooks/2_query_verify.ipynb`) 成為主工作流。
   - Router / Retrieve 工具全面改為法律語境命名。
 - **待完成**:
   - 補強測試、文件同步更新、Notebook + CLI 共用設定的自動驗證。
@@ -41,7 +41,7 @@
 ### Phase 1 – 現代化基礎 (v0.4.0)
 **焦點**
 - 模組化：`workflow.py` 提供 create_llm / create_rag_workflow / run_query。CLI 僅作相容層。
-- Notebook：`notebooks/legal_rag_workflow.ipynb` 展示完整流程，含設定、查詢、除錯。
+- Notebook：`notebooks/1_build_index.ipynb`、`notebooks/2_query_verify.ipynb` 展示完整流程，含設定、查詢、除錯。
 - 測試：針對 router / retrieve / citation 流程建立 pytest，覆蓋率達 50%+。
 - 文件：README、Developer Guide、ROADMAP 皆更新為法律 RAG 語境。
 

@@ -30,14 +30,13 @@ pip install -r requirements.txt
 
 ### 3. Application Configuration
 
-```bash
-# Create a .env file from the template
-cp .env.example .env
+The repository includes a `.env` with placeholder values. Update it with your own settings:
 
+```bash
 # Edit the .env file and fill in your API keys and database settings
 nano .env
 ```
-A `PGVECTOR_URL` is required. For local development, it should be:
+`PGVECTOR_URL` 是必填值，例如：
 `postgresql+psycopg2://user:password@localhost:5433/rag_db`
 
 ### 4. Database Setup
@@ -53,42 +52,19 @@ docker compose up -d
 
 ## 📖 Usage
 
-The system has two main functions: **building the index** from documents and **querying the index**.
+以 Notebook 為主要入口點：
 
-### 1. Building the Index
+### Notebook Entrypoints
+- `notebooks/1_build_index.ipynb`：初始化階層式 Schema、收集文件並執行階層式 chunking 與向量化（封裝於 `scripts/index_hierarchical.py`）。
+- `notebooks/2_query_verify.ipynb`：載入 `rag_system.workflow` 定義的 LangGraph Agent，執行檢索並驗證回答。
 
-The `build_all.sh` script automates the entire process of document preprocessing and indexing.
+### Operations / Scripts
+- `scripts/init_hierarchical_schema.py`：建立或驗證階層式資料表。
+- `scripts/index_hierarchical.py`：使用 `IndexDocumentUseCase` 進行階層式索引。
+- `scripts/migrate_to_hierarchical.py` 及其他檔案：一次性維運與遷移工具。
 
-1.  Place your source documents (PDF, RTF, DOCX) into the `rag_system/documents` directory.
-2.  Run the build script:
-
-```bash
-# Execute the automated build script
-# The script will automatically skip collections that already exist.
-./build_all.sh
-
-# To force a rebuild of all documents, use the --force flag
-./build_all.sh --force
-```
-
-The script will process each document, convert it to Markdown, chunk it, create vector embeddings, and store them in the database. Each document gets its own "collection" in the database, named after the document's filename.
-
-### 2. Querying the Index (Notebook-first)
-
-The recommended way to run the LangGraph agent is via the notebook workflow:
-
-1.  Open `notebooks/legal_rag_workflow.ipynb` in JupyterLab / VS Code.
-2.  Load your `.env`, instantiate `RAGConfig`, and call `run_query()` as shown in the notebook cells.
-3.  Adjust `top_k`, `content_max_length`, or `use_hierarchical` flags directly in Python, without touching the CLI.
-
-> **Note:** The old `query_rag_pg.py` CLI now exists only for backward compatibility and automation scripts. The notebook reflects the modular API (`rag_system.workflow`) and is the preferred integration surface.
-
-**Legacy CLI (optional):**
-
-```bash
-cd rag_system
-python query_rag_pg.py -q "行政程序法第102條規定了什麼？" --collection <your_collection>
-```
+### Legacy
+- 舊版建置腳本與 CLI 已移至 `rag_system/legacy/`（包含 `build_all.sh`、`build/`、`query_rag_pg.py`）。建議改用上述 Notebook 與 core library，僅在維持相容性時再使用。
 
 ### 3. **NEW** Hierarchical RAG System
 
@@ -137,8 +113,7 @@ python scripts/query_hierarchical.py \
 
 **Retrieve-only with Hierarchical:**
 ```bash
-cd rag_system
-python query_rag_pg.py \
+python rag_system/legacy/query_rag_pg.py \
     -q "違反第3條規定會有什麼罰則？" \
     --hierarchical \
     --retrieve-only
