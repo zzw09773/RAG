@@ -2,7 +2,7 @@
 
 ## 專案概述
 
-這是一個基於 PostgreSQL + pgvector 的航空工程文件 RAG (Retrieval-Augmented Generation) 系統,專門處理 DATCOM 空氣動力學分析文件和 UAV 戰機設計資料。
+這是一個基於 PostgreSQL + pgvector 的法律文件 RAG (Retrieval-Augmented Generation) 系統，透過階層式索引與 LangGraph Agent 執行檢索與回答。
 
 ## 技術堆疊
 
@@ -176,17 +176,8 @@ def example_function(param1: str, param2: int) -> dict:
 
 ## 特定領域知識
 
-### DATCOM 相關
-- DATCOM 是美國空軍的空氣動力學分析工具
-- 主要用於 UAV 戰機設計的氣動分析
-- 輸入檔案: `DATCOM.dat`
-- 輸出檔案: `datcom.out`
-- 關鍵參數: Namelist 格式 ($FLTCON, $WGPLNF 等)
-
-### 航空工程術語
-- 使用正確的中英文對照
-- 氣動係數: CL (升力), CD (阻力), Cm (俯仰力矩)
-- 保持技術術語的一致性
+- 法律條文與條號查詢需保持條號、法規名稱、版本的精確性。
+- 檢索與回答需附帶來源（條號或文件標識），確保可追溯。
 
 ## 測試規範
 

@@ -45,7 +45,7 @@ graph LR
     Choose --> Result[collection_router tool output]
 ```
 
-The router now only decides **which legal collection** to search. There is no longer a DATCOM branch; all queries stay inside the legal ReAct agent. The router prompt lists collection names plus document counts and asks the LLM to pick the most relevant one (or fall back to the largest non-empty collection).
+The router now only decides **which legal collection** to search. All queries stay inside the legal ReAct agent. The router prompt lists collection names plus document counts and asks the LLM to pick the most relevant one (or fall back to the largest non-empty collection).
 
 ---
 
