@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Legacy CLI entry point for the LangGraph-based legal RAG agent.
 
-Notebooks (see notebooks/legal_rag_workflow.ipynb) are now the primary
+Notebooks (see notebooks/2_query_verify.ipynb) are now the primary
 execution environment. This CLI remains for compatibility and automation.
 """
 import argparse
@@ -260,7 +260,7 @@ def main():
 
     args = parser.parse_args()
 
-    print("⚠️ 這個 CLI 僅供相容與自動化腳本使用，建議改用 notebooks/legal_rag_workflow.ipynb。")
+    print("⚠️ 這個 CLI 僅供相容與自動化腳本使用，建議改用 notebooks/2_query_verify.ipynb。")
 
     # Handle retrieve-only mode separately
     if args.retrieve_only:
