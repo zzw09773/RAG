@@ -6,13 +6,13 @@ This guide provides a detailed overview of the RAG system's architecture, compon
 
 ## 📊 System Architecture
 
-The system is now a single, modular LangGraph ReAct agent that runs primarily from notebooks. `rag_system.workflow` exposes factory functions so Jupyter notebooks, services, or the legacy CLI can all create the exact same workflow without duplicated wiring.
+The system is now a single, modular LangGraph ReAct agent that runs primarily from notebooks. `rag_system.workflow` exposes factory functions so Jupyter notebooks or services can create the exact same workflow without duplicated wiring.
 
 ### Overall Architecture
 
 ```mermaid
 graph TB
-    Start([Notebook / CLI]) --> Init[Configure RAGConfig]
+    Start([Notebook]) --> Init[Configure RAGConfig]
     Init --> Build[create_rag_workflow]
     Build --> Agent[ReAct Agent]
     Agent --> Think[LLM Reasoning]
@@ -54,7 +54,6 @@ The router now only decides **which legal collection** to search. There is no lo
 ```
 rag_system/
 ├── workflow.py              # Notebook/API helper for building workflows
-├── query_rag_pg.py          # Legacy CLI wrapper
 ├── agent.py                 # LangGraph workflow builder
 ├── node.py                  # ReAct agent node
 ├── state.py                 # GraphState definition
@@ -62,9 +61,6 @@ rag_system/
 ├── application/             # Chunking & hierarchical retrieval use cases
 ├── domain/                  # Entities/value objects
 ├── infrastructure/          # Postgres repositories & schema helpers
-├── legacy/
-│   ├── build/                   # Legacy indexing and preprocessing pipeline
-│   └── query_rag_pg.py          # Legacy CLI
 └── notebooks/
     ├── 1_build_index.ipynb       # Indexing entry point
     └── 2_query_verify.ipynb      # Query + verification entry point
@@ -79,31 +75,13 @@ rag_system/
 | `node.py` | Implements the ReAct reasoning loop, formatting logic, and error handling. | 
 | `tool/` | LangChain-compatible tools (router, flat/hierarchical retrieval, metadata search, calculator). | 
 | `application/` | Clean Architecture use cases (indexing, retrieval, chunking). |
-| `legacy/build/` | Offline preprocessing + indexing pipeline preserved for backward compatibility. |
 | `notebooks/` | Default developer UX for interactive experimentation. |
-| `legacy/query_rag_pg.py` | Legacy CLI maintained for automation compatibility. |
 
 ---
 
 ## 🔧 Building the Index (Notebook-first)
 
-Preferred path：`notebooks/1_build_index.ipynb`。流程透過 `scripts/init_hierarchical_schema.py` 與 `scripts/index_hierarchical.py` 呼叫 Clean Architecture 用例，建立階層式索引。
-
-### CLI equivalents
-
-- 初始化 Schema
-  ```bash
-  python scripts/init_hierarchical_schema.py --conn $PGVECTOR_URL
-  ```
-
-- 遞迴索引資料夾
-  ```bash
-  python scripts/index_hierarchical.py data/ --recursive --conn $PGVECTOR_URL --force
-  ```
-
-### Legacy path
-
-`rag_system/legacy/build_all.sh` 與 `rag_system/legacy/build/` 仍保留以免破壞舊流程，但不再建議使用。
+Preferred path：`notebooks/1_build_index.ipynb`，直接呼叫 `rag_system.infrastructure.schema` 與 `rag_system.application.indexing` 來建立階層式索引。CLI scripts 與 legacy 流程已移除。
 
 ---
 

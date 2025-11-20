@@ -13,7 +13,7 @@
    source venv/bin/activate
    pip install -r requirements.txt
    ```
-3. **設定環境變數**：複製並填寫 `.env` 中的空白值（`PGVECTOR_URL` 為必填）。
+3. **設定環境變數**：複製並填寫 `.env` 中的空白值（`PGVECTOR_URL` 為必填）。Notebook 會自動將 repo root 加入 `sys.path`，但請在 repo 根目錄啟動 Jupyter（`cd /home/c1147259/桌面/RAG/RAG && jupyter notebook`）。
 4. **啟動資料庫**：
    ```bash
    docker compose up -d
@@ -34,11 +34,6 @@ project_root/
 │   ├── 1_build_index.ipynb # 初始化資料庫、讀檔、建立向量索引
 │   └── 2_query_verify.ipynb# 載入 Agent、檢索並驗證回答
 │
-├── scripts/                # 維運與管理腳本
-│   ├── init_hierarchical_schema.py
-│   ├── index_hierarchical.py
-│   └── migrate_to_hierarchical.py
-│
 └── rag_system/             # 核心程式庫
     ├── config.py           # RAGConfig 統一配置
     ├── common.py           # 共用工具 (Log, LocalApiEmbeddings)
@@ -46,8 +41,7 @@ project_root/
     ├── infrastructure/     # 資料庫實作
     ├── application/        # 用例層 (索引、檢索、切塊)
     ├── tool/               # LangGraph 工具
-    ├── workflow.py         # Notebook/服務的流程入口
-    └── legacy/             # 舊版 CLI 與建置腳本
+    └── workflow.py         # Notebook/服務的流程入口
 ```
 
 ---
@@ -55,30 +49,14 @@ project_root/
 ## 📖 Usage
 
 - **Notebook 入口**：
-  - `notebooks/1_build_index.ipynb`：初始化階層式 Schema、收集文件、建立索引。
+  - `notebooks/1_build_index.ipynb`：直接呼叫 `rag_system` 模組初始化階層式 Schema、收集文件並建立索引（預設批次目錄 `data/input`，可在 Notebook 調整）。
   - `notebooks/2_query_verify.ipynb`：載入 `rag_system.workflow`，執行檢索與回答驗證。
-- **腳本工具**：
-  - `scripts/init_hierarchical_schema.py`：建立/驗證資料表。
-  - `scripts/index_hierarchical.py`：呼叫 `IndexDocumentUseCase` 進行階層式索引。
-  - `scripts/migrate_to_hierarchical.py`：從平面集合遷移到階層式架構。
-- **Legacy**：舊版 CLI 與建置流程位於 `rag_system/legacy/`，僅為相容性保留。
 
 ---
 
 ## 🔀 Hierarchical Migration (簡版)
 
-```bash
-# 1) 建立階層式 Schema
-python scripts/init_hierarchical_schema.py --conn "$PGVECTOR_URL"
-
-# 2) 預覽遷移
-python scripts/migrate_to_hierarchical.py --conn "$PGVECTOR_URL" \
-    --collection-name "law_collection" --embed-api-key "YOUR_API_KEY" --preview
-
-# 3) 執行遷移
-python scripts/migrate_to_hierarchical.py --conn "$PGVECTOR_URL" \
-    --collection-name "law_collection" --embed-api-key "YOUR_API_KEY"
-```
+透過 `notebooks/1_build_index.ipynb` 直接初始化階層式 Schema 並索引文件；如需重新索引，設定 `force_reindex=True` 即可。舊版 CLI/scripts 已移除。
 
 ---
 

@@ -7,10 +7,6 @@ This package follows a Clean Architecture-inspired layout:
     - ``application``: Use cases such as indexing, retrieval, and chunking.
     - ``tool``: LangGraph tool implementations for agent workflows.
     - ``workflow``: LangGraph orchestration entry points for notebooks.
-
-Legacy assets are preserved under ``rag_system.legacy`` for backward compatibility
-(e.g., the old CLI and build scripts). New development should depend on the
-application-level use cases and notebook workflows instead of the legacy entry points.
 """
 
 from .common import log, set_quiet_mode, LocalApiEmbeddings
