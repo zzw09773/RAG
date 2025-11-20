@@ -6,69 +6,46 @@ This guide provides a detailed overview of the RAG system's architecture, compon
 
 ## 📊 System Architecture
 
-The system uses a hybrid architecture that combines a fixed-sequence executor for specialized tasks (like DATCOM file generation) with a flexible ReAct agent for general-purpose queries. A router at the entry point directs the user's query to the appropriate workflow.
+The system is now a single, modular LangGraph ReAct agent that runs primarily from notebooks. `rag_system.workflow` exposes factory functions so Jupyter notebooks, services, or the legacy CLI can all create the exact same workflow without duplicated wiring.
 
 ### Overall Architecture
 
 ```mermaid
 graph TB
-    Start([User Query]) --> Router{Intent Router}
-    
-    Router -->|DATCOM Generation| DatcomFlow[DATCOM Fixed Sequence]
-    Router -->|General Query| GeneralFlow[ReAct Agent]
-    
-    subgraph "DATCOM Generation Flow"
-        DatcomFlow --> Extract[Parameter Extraction<br/>LLM + JSON Parser]
-        Extract --> Tool1[convert_wing_to_datcom]
-        Tool1 --> Tool2[generate_fltcon_matrix]
-        Tool2 --> Tool3[calculate_synthesis_positions]
-        Tool3 --> Tool4[define_body_geometry]
-        Tool4 --> Format[.dat File Formatting]
-    end
-    
-    subgraph "General Query Flow"
-        GeneralFlow --> Think[LLM Reasoning]
-        Think --> Action{Select Action}
-        Action -->|Route| RouterTool[router_tool]
-        Action -->|Retrieve| RetrieveTool[retrieve_documents]
-        Action -->|Search| MetadataTool[metadata_search]
-        Action -->|Calculate| CalcTool[calculator_tool]
-        
-        RouterTool --> Observe[Observe Results]
-        RetrieveTool --> Observe
-        MetadataTool --> Observe
-        CalcTool --> Observe
-        
-        Observe --> Think
-        Action -->|Finish| Generate[Generate Answer]
-    end
-    
-    Format --> End([Return Result])
-    Generate --> End
-    
-    style Router fill:#ff6b6b
-    style DatcomFlow fill:#4ecdc4
-    style GeneralFlow fill:#95e1d3
+    Start([Notebook / CLI]) --> Init[Configure RAGConfig]
+    Init --> Build[create_rag_workflow]
+    Build --> Agent[ReAct Agent]
+    Agent --> Think[LLM Reasoning]
+    Think --> Action{Select Tool}
+    Action -->|Route| RouterTool[collection_router]
+    Action -->|Retrieve| RetrieveTool[retrieve_legal_documents]
+    Action -->|Metadata| MetadataTool[metadata_search]
+    Action -->|Lookup| ArticleTool[lookup_article_by_number]
+    Action -->|Calculate| CalcTool[python_calculator]
+    RouterTool --> Observe[Tool Output]
+    RetrieveTool --> Observe
+    MetadataTool --> Observe
+    ArticleTool --> Observe
+    CalcTool --> Observe
+    Observe --> Think
+    Action -->|Finish| Answer[Answer + Citations]
+    Answer --> End([Notebook Output])
+
+    style Agent fill:#95e1d3
     style End fill:#f38181
 ```
 
-### Intent Router Logic
+### Collection Router Logic
 
 ```mermaid
 graph LR
-    Query[User Query] --> Parse[LLM Intent Analysis]
-    Parse --> Check{Keyword Detection}
-    
-    Check -->|Contains:<br/>- Generate DATCOM<br/>- .dat file<br/>- Wing parameters<br/>- Flight conditions| Datcom[datcom_generation]
-    Check -->|Other:<br/>- Definition query<br/>- Explanation query<br/>- General conversation| General[general_query]
-    
-    Datcom --> Route1[Route to DATCOM Node]
-    General --> Route2[Route to ReAct Agent]
-    
-    style Check fill:#ffe66d
-    style Datcom fill:#4ecdc4
-    style General fill:#95e1d3
+    Query[User Query] --> Analyze[Router Prompt]
+    Analyze --> Stats[Collection Stats]
+    Stats --> Choose[LLM selects collection]
+    Choose --> Result[collection_router tool output]
 ```
+
+The router now only decides **which legal collection** to search. There is no longer a DATCOM branch; all queries stay inside the legal ReAct agent. The router prompt lists collection names plus document counts and asks the LLM to pick the most relevant one (or fall back to the largest non-empty collection).
 
 ---
 
@@ -76,61 +53,57 @@ graph LR
 
 ```
 rag_system/
-├── query_rag_pg.py          # CLI Entrypoint
-├── agent.py                 # LangGraph workflow (routing + branches) ⭐
-├── router_node.py           # Intent routing node 🆕
-├── datcom_node.py           # DATCOM fixed-sequence node 🆕
-├── node.py                  # General ReAct agent node
-├── state.py                 # GraphState Definition
-└── tool/                    # Tool modules
-    ├── datcom_calculator.py # DATCOM calculation tools
-    ├── retrieve.py          # Vector retrieval
-    └── ...
-├── build/                   # Indexing and document processing tools
-    ├── indexer.py           # Main indexing script
-    ├── document_parser.py   # File parsing (PDF, DOCX, etc.)
-    ├── chunking.py          # Text splitting logic
-    └── preprocess.py        # Text cleaning
+├── workflow.py              # Notebook/API helper for building workflows
+├── query_rag_pg.py          # Legacy CLI wrapper
+├── agent.py                 # LangGraph workflow builder
+├── node.py                  # ReAct agent node
+├── state.py                 # GraphState definition
+├── tool/                    # Router, retrieval, metadata, calculator tools
+├── application/             # Chunking & hierarchical retrieval use cases
+├── domain/                  # Entities/value objects
+├── infrastructure/          # Postgres repositories & schema helpers
+├── legacy/
+│   ├── build/                   # Legacy indexing and preprocessing pipeline
+│   └── query_rag_pg.py          # Legacy CLI
+└── notebooks/
+    ├── 1_build_index.ipynb       # Indexing entry point
+    └── 2_query_verify.ipynb      # Query + verification entry point
 ```
 
 ### Module Responsibilities
 
 | Module | Responsibility |
 |:---|:---|
-| `agent.py` | **Workflow Orchestration**: Defines the LangGraph graph with routing and conditional edges. | 
-| `router_node.py` | **Intent Routing**: The entry point of the graph; determines the user's intent. | 
-| `datcom_node.py` | **DATCOM Generation**: Executes the DATCOM toolchain in a fixed order for reliability. | 
-| `node.py` | **General Query**: Handles all non-DATCOM general RAG queries using a ReAct loop. | 
-| `query_rag_pg.py` | **CLI Entrypoint**: Parses command-line arguments and executes the graph. | 
-| `tool/` | Contains all tools callable by the agent (retrieval, calculation, etc.). | 
-| `build/` | Contains offline scripts for parsing, chunking, and indexing documents. | 
+| `workflow.py` | Exposes `create_llm`, `create_rag_workflow`, `run_query` for notebooks/services. |
+| `agent.py` | Builds the LangGraph state graph and wires agent nodes. | 
+| `node.py` | Implements the ReAct reasoning loop, formatting logic, and error handling. | 
+| `tool/` | LangChain-compatible tools (router, flat/hierarchical retrieval, metadata search, calculator). | 
+| `application/` | Clean Architecture use cases (indexing, retrieval, chunking). |
+| `legacy/build/` | Offline preprocessing + indexing pipeline preserved for backward compatibility. |
+| `notebooks/` | Default developer UX for interactive experimentation. |
+| `legacy/query_rag_pg.py` | Legacy CLI maintained for automation compatibility. |
 
 ---
 
-## 🔧 Building the Index (`build_all.sh`)
+## 🔧 Building the Index (Notebook-first)
 
-The `build_all.sh` script is the primary way to build and manage the vector database.
+Preferred path：`notebooks/1_build_index.ipynb`。流程透過 `scripts/init_hierarchical_schema.py` 與 `scripts/index_hierarchical.py` 呼叫 Clean Architecture 用例，建立階層式索引。
 
-### Usage
+### CLI equivalents
 
-- **Incremental Build (Default)**: Processes new documents and skips existing database collections.
+- 初始化 Schema
   ```bash
-  ./build_all.sh
-  ```
-- **Force Rebuild**: Deletes and rebuilds all collections from scratch. Use this if you change the chunking strategy or embedding model.
-  ```bash
-  ./build_all.sh --force
-  ```
-- **Rebuild Only**: Skips the document preprocessing step and rebuilds the index from existing Markdown files.
-  ```bash
-  ./build_all.sh --rebuild-only
+  python scripts/init_hierarchical_schema.py --conn $PGVECTOR_URL
   ```
 
-### Data Flow
+- 遞迴索引資料夾
+  ```bash
+  python scripts/index_hierarchical.py data/ --recursive --conn $PGVECTOR_URL --force
+  ```
 
-1.  **Input**: Documents in `rag_system/documents/`
-2.  **Preprocess**: `preprocess.py` converts files to clean Markdown, output to `rag_system/processed_md/`.
-3.  **Index**: `indexer.py` chunks the Markdown, generates embeddings, and stores them in the PostgreSQL database.
+### Legacy path
+
+`rag_system/legacy/build_all.sh` 與 `rag_system/legacy/build/` 仍保留以免破壞舊流程，但不再建議使用。
 
 ---
 

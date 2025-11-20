@@ -59,8 +59,8 @@ else
 fi
 echo ""
 
-# Ensure we are in the correct directory (project root)
-cd "$(dirname "$0")"
+# Ensure we are in the project root
+cd "$(dirname "$0")/.."
 
 # Load environment variables from .env file if it exists
 if [ -f .env ]; then
@@ -78,7 +78,7 @@ fi
 if [ "$REBUILD_ONLY" = false ]; then
   echo ""
   echo "[STEP 1/2] Preprocessing source documents into Markdown..."
-  python3 -m rag_system.build.preprocess --input_dir rag_system/documents --output_dir rag_system/processed_md
+  python3 -m rag_system.legacy.build.preprocess --input_dir rag_system/documents --output_dir rag_system/processed_md
 else
   echo ""
   echo "[STEP 1/2] Skipping preprocessing (--rebuild-only mode)"
@@ -160,7 +160,7 @@ while IFS= read -r -d '' md_file; do
   echo "-----------------------------------------------------"
 
   # Split strategy is now determined automatically by the indexer.
-  python3 -m rag_system.build.indexer \
+  python3 -m rag_system.legacy.build.indexer \
     --input_file "$md_file" \
     --collection "$collection_name" \
     --reset_collection \

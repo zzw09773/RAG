@@ -1,154 +1,113 @@
 # Law RAG System
 
-A Retrieval-Augmented Generation (RAG) system specialized for **Chinese legal documents**. It parses, chunks, vectorizes, and stores legal documents from various formats (PDF, RTF, DOCX) into a `PostgreSQL` database for efficient semantic search.
-
-[![Python](https://img.shields.io/badge/Python-3.9+-blue.svg)](https://www.python.org/)
-[![LangChain](https://img.shields.io/badge/LangChain-0.2+-green.svg)](https://github.com/langchain-ai/langchain)
-[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16+-blue.svg)](https://www.postgresql.org/)
-[![PGVector](https://img.shields.io/badge/PGVector-0.7+-orange.svg)](https://github.com/pgvector/pgvector)
+以 Notebook 為主入口的中文法律 RAG 系統，負責解析、切分、向量化 PDF/RTF/DOCX，並寫入 PostgreSQL（pgvector）。
 
 ---
 
 ## 🚀 Quick Start
 
-This guide provides the essential steps to set up and run the RAG system. For more detailed information on system architecture and development, please see the [Developer Guide](docs/DEVELOPER_GUIDE.md).
+1. **環境需求**：Python 3.9+、Docker + Docker Compose。
+2. **安裝依賴**：
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   pip install -r requirements.txt
+   ```
+3. **設定環境變數**：複製並填寫 `.env` 中的空白值（`PGVECTOR_URL` 為必填）。
+4. **啟動資料庫**：
+   ```bash
+   docker compose up -d
+   ```
 
-### 1. Prerequisites
-- **Python**: 3.9 or newer.
-- **Docker & Docker Compose**: For running the PostgreSQL database.
+---
 
-### 2. Environment & Dependencies
+## 📁 Repository Layout
 
-```bash
-# Create and activate a virtual environment
-python3 -m venv venv
-source venv/bin/activate
-
-# Install all dependencies
-pip install -r requirements.txt
 ```
-
-### 3. Application Configuration
-
-```bash
-# Create a .env file from the template
-cp .env.example .env
-
-# Edit the .env file and fill in your API keys and database settings
-nano .env
-```
-A `PGVECTOR_URL` is required. For local development, it should be:
-`postgresql+psycopg2://user:password@localhost:5433/rag_db`
-
-### 4. Database Setup
-
-This project uses Docker to run a PostgreSQL database with the `pgvector` extension.
-
-```bash
-# Start the PostgreSQL service in the background
-docker compose up -d
+project_root/
+├── .env                    # 環境變數佔位檔
+├── docker-compose.yaml     # 本地資料庫服務
+├── requirements.txt        # 依賴列表
+├── README.md               # 入口說明（本文件）
+│
+├── notebooks/              # 主要進入點
+│   ├── 1_build_index.ipynb # 初始化資料庫、讀檔、建立向量索引
+│   └── 2_query_verify.ipynb# 載入 Agent、檢索並驗證回答
+│
+├── scripts/                # 維運與管理腳本
+│   ├── init_hierarchical_schema.py
+│   ├── index_hierarchical.py
+│   └── migrate_to_hierarchical.py
+│
+└── rag_system/             # 核心程式庫
+    ├── config.py           # RAGConfig 統一配置
+    ├── common.py           # 共用工具 (Log, LocalApiEmbeddings)
+    ├── domain/             # 領域模型
+    ├── infrastructure/     # 資料庫實作
+    ├── application/        # 用例層 (索引、檢索、切塊)
+    ├── tool/               # LangGraph 工具
+    ├── workflow.py         # Notebook/服務的流程入口
+    └── legacy/             # 舊版 CLI 與建置腳本
 ```
 
 ---
 
 ## 📖 Usage
 
-The system has two main functions: **building the index** from documents and **querying the index**.
+- **Notebook 入口**：
+  - `notebooks/1_build_index.ipynb`：初始化階層式 Schema、收集文件、建立索引。
+  - `notebooks/2_query_verify.ipynb`：載入 `rag_system.workflow`，執行檢索與回答驗證。
+- **腳本工具**：
+  - `scripts/init_hierarchical_schema.py`：建立/驗證資料表。
+  - `scripts/index_hierarchical.py`：呼叫 `IndexDocumentUseCase` 進行階層式索引。
+  - `scripts/migrate_to_hierarchical.py`：從平面集合遷移到階層式架構。
+- **Legacy**：舊版 CLI 與建置流程位於 `rag_system/legacy/`，僅為相容性保留。
 
-### 1. Building the Index
+---
 
-The `build_all.sh` script automates the entire process of document preprocessing and indexing.
-
-1.  Place your source documents (PDF, RTF, DOCX) into the `rag_system/documents` directory.
-2.  Run the build script:
-
-```bash
-# Execute the automated build script
-# The script will automatically skip collections that already exist.
-./build_all.sh
-
-# To force a rebuild of all documents, use the --force flag
-./build_all.sh --force
-```
-
-The script will process each document, convert it to Markdown, chunk it, create vector embeddings, and store them in the database. Each document gets its own "collection" in the database, named after the document's filename.
-
-### 2. Querying the Index
-
-Use the `query_rag_pg.py` script to perform semantic searches on the indexed documents.
-
-**Single Query:**
+## 🔀 Hierarchical Migration (簡版)
 
 ```bash
-# Navigate to the rag_system directory
-cd rag_system
+# 1) 建立階層式 Schema
+python scripts/init_hierarchical_schema.py --conn "$PGVECTOR_URL"
 
-# Use -q to specify your question and --collection to target a document collection
-python query_rag_pg.py -q "What are the regulations for..." --collection <your_document_name>
-```
+# 2) 預覽遷移
+python scripts/migrate_to_hierarchical.py --conn "$PGVECTOR_URL" \
+    --collection-name "law_collection" --embed-api-key "YOUR_API_KEY" --preview
 
-**Interactive Mode:**
-
-If you run the script without a query, it will enter an interactive mode, allowing you to ask multiple questions.
-
-```bash
-cd rag_system
-python query_rag_pg.py --collection <your_document_name>
+# 3) 執行遷移
+python scripts/migrate_to_hierarchical.py --conn "$PGVECTOR_URL" \
+    --collection-name "law_collection" --embed-api-key "YOUR_API_KEY"
 ```
 
 ---
 
-## 📊 System Architecture
-
-### Overall Architecture
+## 📐 Architecture (概要)
 
 ```mermaid
 graph TB
-    Start([User Query]) --> Router{Intent Router}
-    
-    Router -->|DATCOM Generation| DatcomFlow[DATCOM Fixed Sequence]
-    Router -->|General Query| GeneralFlow[ReAct Agent]
-    
-    subgraph "DATCOM Generation Flow"
-        DatcomFlow --> Extract[Parameter Extraction<br/>LLM + JSON Parser]
-        Extract --> Tool1[convert_wing_to_datcom]
-        Tool1 --> Tool2[generate_fltcon_matrix]
-        Tool2 --> Tool3[calculate_synthesis_positions]
-        Tool3 --> Tool4[define_body_geometry]
-        Tool4 --> Format[.dat File Formatting]
-    end
-    
-    subgraph "General Query Flow"
-        GeneralFlow --> Think[LLM Reasoning]
+    Start([User Query]) --> Agent[ReAct Agent]
+    subgraph "Legal Document Query Flow"
+        Agent --> Think[LLM Reasoning]
         Think --> Action{Select Action}
-        Action -->|Route| RouterTool[router_tool]
+        Action -->|Route| RouterTool[select_collection]
         Action -->|Retrieve| RetrieveTool[retrieve_documents]
         Action -->|Search| MetadataTool[metadata_search]
         Action -->|Calculate| CalcTool[calculator_tool]
-        
         RouterTool --> Observe[Observe Results]
         RetrieveTool --> Observe
         MetadataTool --> Observe
         CalcTool --> Observe
-        
         Observe --> Think
-        Action -->|Finish| Generate[Generate Answer]
+        Action -->|Finish| Generate[Answer w/ Citations]
     end
-    
-    Format --> End([Return Result])
-    Generate --> End
-    
-    style Router fill:#ff6b6b
-    style DatcomFlow fill:#4ecdc4
-    style GeneralFlow fill:#95e1d3
+    Generate --> End([Return Result])
+    style Agent fill:#95e1d3
     style End fill:#f38181
 ```
 
----
-
-## 🔧 Development
-
-For details on the system's architecture, including the `LangGraph` implementation, module responsibilities, and advanced configuration, please refer to the [**Developer Guide**](docs/DEVELOPER_GUIDE.md).
+如需更深入的模組與流程說明，請參考 `docs/DEVELOPER_GUIDE.md`。
 
 ---
+
 **Last Updated**: 2025-10-08

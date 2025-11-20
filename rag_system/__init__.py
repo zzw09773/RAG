@@ -1,24 +1,16 @@
 """
-RAG System with Agentic Capabilities
+RAG System Core Library
 
-A clean, modular RAG system with build and query separation:
+This package follows a Clean Architecture-inspired layout:
+    - ``domain``: Entities and value objects that model documents and hierarchy.
+    - ``infrastructure``: Database repositories and schema helpers.
+    - ``application``: Use cases such as indexing, retrieval, and chunking.
+    - ``tool``: LangGraph tool implementations for agent workflows.
+    - ``workflow``: LangGraph orchestration entry points for notebooks.
 
-Build Module (rag_system.build):
-- Document preprocessing and chunking
-- Vector database indexing
-- Export and utilities
-
-Query Module (rag_system.query):
-- Agentic RAG with self-evaluation
-- Collection routing
-- Interactive and programmatic interfaces
-
-Usage:
-    # Building indexes
-    from rag_system.build import preprocess_main, indexer_main
-
-    # Querying with Agentic RAG
-    from rag_system.query import RagApplication
+Legacy assets are preserved under ``rag_system.legacy`` for backward compatibility
+(e.g., the old CLI and build scripts). New development should depend on the
+application-level use cases and notebook workflows instead of the legacy entry points.
 """
 
 from .common import log, set_quiet_mode, LocalApiEmbeddings
