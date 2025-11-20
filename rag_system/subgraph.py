@@ -146,20 +146,8 @@ if __name__ == "__main__":
 
     # Test with a general question
     print("--- TESTING GENERAL QUERY ---")
-    general_question = "FLTCON namelist 用來定義什麼？"
+    general_question = "行政程序法第102條規定了什麼？"
     general_result = test_subgraph_standalone(general_question, config)
     print("\n=== General Test Result ===")
     print(f"Question: {general_result.get('question', 'N/A')}")
     print(f"Answer: {general_result.get('generation', 'N/A')}")
-
-    # Test with a DATCOM generation question
-    print("\n--- TESTING DATCOM GENERATION QUERY ---")
-    datcom_question = """根據參數生成完整 DATCOM .dat:
-機翼: S=530 ft², A=2.8, λ=0.3, 後掠角45°
-飛行: Mach 0.8, 高度10000 ft, 攻角-2到10度每2度, 重量40000 lbs  
-機身: 長63 ft, 最大直徑3 ft
-位置: XCG=25 ft, XW=18.5 ft, XH=49 ft"""
-    datcom_result = test_subgraph_standalone(datcom_question, config)
-    print("\n=== DATCOM Test Result ===")
-    print(f"Question: {datcom_question}")
-    print(f"Answer: {datcom_result.get('generation', 'N/A')}")

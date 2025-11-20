@@ -23,7 +23,7 @@ def test_extract_sources_handles_metadata_line():
 
 def test_collect_sources_deduplicates_and_preserves_order():
     tool_responses = [
-        {"name": "retrieve_datcom_archive", "content": "來源: a.md, 頁碼: 3\n內容: ..."},
+        {"name": "retrieve_legal_documents", "content": "來源: a.md, 頁碼: 3\n內容: ..."},
         {"name": "metadata", "content": "來源: a.md, 頁碼: 3\n內容: ..."},
         {"name": "metadata", "content": "來源: b.md\nMetadata: 模組: 結構分析"},
     ]

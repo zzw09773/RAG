@@ -1,5 +1,5 @@
-"""DATCOM archive retrieval tool for aircraft design assistant."""
-from typing import Callable, Optional
+"""Legal collection retrieval tool for the RAG assistant."""
+from typing import Callable
 from langchain.tools import tool
 from .shared import get_vectorstore
 from ..common import log
@@ -15,43 +15,42 @@ def create_retrieve_tool(
     top_k: int = DEFAULT_TOP_K,
     content_max_length: int = DEFAULT_CONTENT_MAX_LENGTH
 ) -> Callable:
-    """Create a DATCOM archive retrieval tool for searching design documents and code.
+    """Create a flat legal document retrieval tool.
 
     Args:
-        conn_str: The database connection string.
+        conn_str: Database connection string.
         embed_api_base: Embedding API base URL.
         embed_api_key: Embedding API key.
         embed_model: Embedding model name.
-        verify_ssl: Flag to verify SSL.
-        top_k: Number of documents to retrieve (default: from config.DEFAULT_TOP_K)
-        content_max_length: Maximum length for document content (default: from config.DEFAULT_CONTENT_MAX_LENGTH)
+        verify_ssl: Whether to verify SSL certificates.
+        top_k: Number of documents to retrieve.
+        content_max_length: Maximum size of content per chunk.
 
     Returns:
-        A tool function that can be used by the ReAct agent.
+        LangChain tool callable for ReAct agents.
     """
     @tool
-    def retrieve_datcom_archive(query: str, design_area: str) -> str:
-        """Search for relevant aircraft design documents, performance data, and code in a specific design area.
+    def retrieve_legal_documents(query: str, collection_name: str) -> str:
+        """Search for relevant legal document chunks in a specific collection.
 
-        Use this tool to find historical design documents, wind tunnel data, performance reports,
-        and source code from past aircraft projects.
-        You MUST specify which design area to search in.
+        This tool requires the caller to supply the collection name, typically
+        obtained from the collection_router tool.
 
         Args:
-            query: The engineering query or technical search terms. Use specific technical keywords, aircraft models, or component names.
-            design_area: The name of the design area to search within (e.g., '空氣動力學', '航電系統').
-                        You should determine this using the design_area_router tool first.
+            query: Natural language question.
+            collection_name: Target collection to search.
 
         Returns:
-            Formatted design documents with technical data and source citations, or an error message.
+            Formatted legal excerpts or an error message.
         """
-        log(f"Retrieving DATCOM archive for query: '{query}' in design area: '{design_area}'")
+        log(
+            f"Retrieving legal documents for query: '{query}' in collection: '{collection_name}'"
+        )
 
         try:
-            # Get a vectorstore instance for the dynamically specified design area
             vectorstore = get_vectorstore(
                 connection_string=conn_str,
-                collection_name=design_area,
+                collection_name=collection_name,
                 api_base=embed_api_base,
                 api_key=embed_api_key,
                 embed_model=embed_model,
@@ -61,32 +60,33 @@ def create_retrieve_tool(
             documents = vectorstore.similarity_search(query, k=top_k)
 
             if not documents:
-                log(f"No documents retrieved from design area '{design_area}'")
-                return f"在『{design_area}』領域中找不到相關的設計文件或程式碼。建議重新檢查查詢關鍵字或嘗試其他設計領域。"
+                log(f"No documents retrieved from collection '{collection_name}'")
+                return (
+                    f"在『{collection_name}』集合中找不到相關的法律文件內容。"
+                    "請檢查問題或選擇其他集合。"
+                )
 
-            log(f"Retrieved {len(documents)} design documents from '{design_area}'")
+            log(f"Retrieved {len(documents)} documents from '{collection_name}'")
 
-            # Format documents for LLM consumption
             result_parts = []
             for i, doc in enumerate(documents, 1):
                 source = doc.metadata.get('source', 'unknown')
                 page = doc.metadata.get('page', '?')
+                article = doc.metadata.get('article', '')
                 section = doc.metadata.get('section', '')
-                line = doc.metadata.get('line', '')
                 content = doc.page_content
 
                 if len(content) > content_max_length:
                     content = content[:content_max_length] + "..."
 
-                # Format location info
                 location = f"頁碼: {page}"
+                if article:
+                    location += f", 條文: {article}"
                 if section:
                     location += f", 章節: {section}"
-                if line:
-                    location += f", Line {line}"
 
                 formatted_doc = (
-                    f"=== 文件 {i} (來自『{design_area}』領域) ===\n"
+                    f"=== 文件 {i} (集合: {collection_name}) ===\n"
                     f"來源: {source}, {location}\n"
                     f"內容:\n{content}\n"
                 )
@@ -95,8 +95,8 @@ def create_retrieve_tool(
             return "\n---\n".join(result_parts)
 
         except Exception as e:
-            error_msg = f"從『{design_area}』領域檢索文件時發生錯誤: {str(e)}"
+            error_msg = f"從『{collection_name}』集合檢索文件時發生錯誤: {str(e)}"
             log(f"ERROR: {error_msg}")
             return error_msg
 
-    return retrieve_datcom_archive
+    return retrieve_legal_documents
