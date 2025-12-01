@@ -36,6 +36,7 @@ jupyter notebook
 1. 載入 RAG workflow
 2. 執行法律文件查詢
 3. 驗證回答品質與引用來源
+> Notebook 開頭會將 repo 根目錄與 `venv` 的 site-packages 加入 `sys.path`，若未選到 venv kernel 仍可匯入模組。
 
 ## 程式化使用範例
 

@@ -1,36 +1,31 @@
 services:
-  app:
+  jupyter-codex:
     build:
-      context: ..
-    container_name: rag_app
-    env_file:
-      - ../.env
+      context: .
+      dockerfile: Dockerfile
+    container_name: rag_jupyter
+    network_mode: "host"   # 配合 Codex OAuth callback 與本機 DB 連線
     volumes:
-      - ../:/app
+      - .:/home/jovyan/work
     depends_on:
-      pgvector:
-        condition: service_healthy
-    # Keep the container running and allow interactive shell
-    tty: true
-    stdin_open: true
-
-  pgvector:
-    image: pgvector/pgvector:0.8.1-pg17-trixie
-    container_name: rag_db
+      - db
+    env_file:
+      - .env
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-postgres}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-      POSTGRES_DB: ${POSTGRES_DB:-postgres}
+      - JUPYTER_PORT=25678
+      - PGVECTOR_URL=${PGVECTOR_URL:-postgresql://postgres:postgres@localhost:15432/Judge}
+
+  db:
+    image: pgvector/pgvector:pg17
+    container_name: Judge_pgvector
     ports:
-      - "${PG_PORT:-5433}:5432"
+      - "15432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=Judge
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ./docker/init:/docker-entrypoint-initdb.d:ro
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
 
 volumes:
   pgdata:

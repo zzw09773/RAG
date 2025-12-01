@@ -13,11 +13,13 @@
    source venv/bin/activate
    pip install -r requirements.txt
    ```
-3. **設定環境變數**：複製並填寫 `.env` 中的空白值（`PGVECTOR_URL` 為必填）。Notebook 會自動將 repo root 加入 `sys.path`，但請在 repo 根目錄啟動 Jupyter（`cd /home/c1147259/桌面/RAG/RAG && jupyter notebook`）。
-4. **啟動資料庫**：
+3. **設定環境變數**：新增 `.env`（已加入 `.gitignore`），至少填 `PGVECTOR_URL`、`EMBED_API_BASE`、`EMBED_API_KEY`。Docker compose 預設 DB 位於 `postgresql://postgres:postgres@localhost:15432/Judge`，Jupyter 埠預設 `25678`。
+4. **啟動 Notebook + DB**：
    ```bash
    docker compose up -d
    ```
+   - Jupyter（無 token/password）：http://localhost:25678
+   - PostgreSQL：localhost:15432（與 `PGVECTOR_URL` 預設一致）
 
 ---
 
@@ -49,8 +51,12 @@ project_root/
 ## 📖 Usage
 
 - **Notebook 入口**：
-  - `notebooks/1_build_index.ipynb`：直接呼叫 `rag_system` 模組初始化階層式 Schema、收集文件並建立索引（預設批次目錄 `data/input`，可在 Notebook 調整）。
-  - `notebooks/2_query_verify.ipynb`：載入 `rag_system.workflow`，執行檢索與回答驗證。
+  - `notebooks/1_build_index.ipynb`：直接呼叫 `rag_system` 模組初始化階層式 Schema、收集文件並建立索引（預設批次目錄 `data/input`，可在 Notebook 調整）。Notebook 首段會將 repo root 與 `venv` 的 site-packages 加入 `sys.path`。
+  - `notebooks/2_query_verify.ipynb`：載入 `rag_system.workflow`，執行檢索與回答驗證（同樣在開頭將 repo root 與 `venv` site-packages 加入 `sys.path`）。
+- **CLI / Service 入口（非 Notebook）**：
+  - 單次查詢：`python -m rag_system.cli query "你的問題"`（可加 `--hierarchical`）。
+  - 簡易 HTTP 服務：`python -m rag_system.cli serve --port 8080`，POST `/query`，payload `{ "question": "..." }`。
+  - Shell 包裝：`./query.sh "你的問題"` 會自動呼叫上述 CLI。
 
 ---
 

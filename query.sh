@@ -20,24 +20,12 @@ if [ -d "venv" ]; then
 fi
 
 # --- Argument Handling ---
-# If the first argument exists and does not start with a '-',
-# assume it is the query and prepend the '-q' flag.
-# This allows for a more natural CLI usage: ./query.sh "My question"
-ARGS=() # Initialize empty array for arguments
-if [[ $# -gt 0 && ! "$1" =~ ^- ]]; then
-  # First arg is the query, prepend -q
-  ARGS+=("-q" "$1")
-  # Add the rest of the arguments
-  shift # Remove the first argument
-  ARGS+=("$@")
-else
-  # Arguments already have flags, use them as is
-  ARGS+=("$@")
-fi
+# Simple pass-through of arguments
+ARGS=("$@")
 # --- End Argument Handling ---
 
 echo "Executing RAG query application with arguments: ${ARGS[@]}"
 echo "-----------------------------------------------------"
 
-# Pass the processed arguments to the Python application (with SSL verification disabled)
-python3 -m rag_system.query_rag_pg "${ARGS[@]}" --no-verify-ssl
+# Pass the processed arguments to the Python CLI entrypoint
+python3 -m rag_system.cli query "${ARGS[@]}"

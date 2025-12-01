@@ -1,8 +1,10 @@
 """ReAct agent node implementation."""
 from typing import List, Callable
 import json
+import re
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
+from langchain_core.messages import ToolMessage, AIMessage
 from .state import GraphState
 from .common import log
 
@@ -16,7 +18,29 @@ Core requirements:
 3. When you answer, clearly reference the supporting evidence. The answer must include a '參考資料' section listing every document via lines formatted as '來源: <檔名>…'.
 4. If no relevant documents are found, explicitly state that the knowledge base lacks information instead of fabricating details.
 
+IMPORTANT INSTRUCTIONS:
+- Do not output internal thought processes in <think> tags.
+- After receiving the collection name from 'collection_router', you MUST immediately call 'retrieve_hierarchical' (or 'retrieve_legal_documents') with the query and the collection name to get the document content.
+- Do not stop until you have retrieved the actual text of the law.
+- If you need to use a tool, output the tool call directly in the expected format.
+
+### ONE-SHOT EXAMPLE (Follow this behavior):
+
+User: "請幫我查陸海空軍懲罰法第7條的內容"
+Assistant: (Calls tool 'collection_router' with query="陸海空軍懲罰法 第7條")
+Tool Output: "陸海空軍懲罰法"
+Assistant: (Calls tool 'retrieve_hierarchical' with query="第7條", collection="陸海空軍懲罰法")
+Tool Output: "...Article 7 content..."
+Assistant: 根據陸海空軍懲罰法第7條規定... (Final Answer)
+
 Follow a ReAct style reasoning loop: think → choose tool → observe → repeat → final answer."""
+
+
+def _clean_think_tags(text: str) -> str:
+    """Remove <think>...</think> blocks from text."""
+    if not text:
+        return ""
+    return re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL).strip()
 
 
 def _build_standard_format(tool_responses, ai_responses):
@@ -124,39 +148,123 @@ def create_agent_node(llm: ChatOpenAI, tools: List[Callable]) -> Callable:
         tools,
         prompt=SYSTEM_PROMPT
     )
+    
+    # Create a map for manual tool invocation
+    tool_map = {t.name: t for t in tools}
 
     def agent_node(state: GraphState) -> dict:
         """ReAct agent node for general queries."""
         log("--- GENERAL AGENT NODE ---")
 
         question = state['question']
-        # The router ensures the message history is initialized
         messages_input = state['messages']
 
-        # Truncate message history to keep context size under control
         if len(messages_input) > 4:
-            log(f"Message history has {len(messages_input)} messages. Truncating to the last 4.")
             messages_input = messages_input[-4:]
 
         try:
             result = agent_executor.invoke({
                 "messages": messages_input
             })
+            
+            messages = result['messages']
+            
+            # --- FALLBACK LOGIC START ---
+            # If the last action was collection_router, and no retrieval followed, force it.
+            
+            has_routed = False
+            router_output = None
+            has_retrieved = False
+            
+            for msg in messages:
+                if isinstance(msg, ToolMessage):
+                    if msg.name == 'collection_router':
+                        has_routed = True
+                        router_output = msg.content
+                    elif msg.name in ('retrieve_hierarchical', 'retrieve_legal_documents'):
+                        has_retrieved = True
+            
+            # If routed but not retrieved, manual intervention
+            if has_routed and not has_retrieved and router_output and "錯誤" not in router_output:
+                log("⚠️ Model stopped after routing. Forcing retrieval step manually.")
+                
+                # Determine which retrieval tool to use
+                retrieval_tool_name = 'retrieve_hierarchical' if 'retrieve_hierarchical' in tool_map else 'retrieve_legal_documents'
+                retrieval_tool = tool_map.get(retrieval_tool_name)
+                
+                if retrieval_tool:
+                    log(f"Invoking {retrieval_tool_name} with collection='{router_output}'")
+                    
+                    # Clean the query by removing the collection name to improve retrieval precision
+                    # e.g., "陸海空軍懲罰法第7條" -> "第7條"
+                    clean_query = question
+                    try:
+                        # Case-insensitive remove of collection name
+                        clean_query = re.sub(re.escape(router_output), '', question, flags=re.IGNORECASE).strip()
+                        if not clean_query: # If query becomes empty, revert to original
+                            clean_query = question
+                        elif len(clean_query) < 2 and len(question) > 5: # Too short, revert
+                             clean_query = question
+                    except Exception:
+                        pass # Fallback to original question on error
+                    
+                    log(f"Refined manual query: '{question}' -> '{clean_query}'")
+
+                    try:
+                        # Prepare arguments based on tool signature
+                        tool_args = {"query": clean_query}
+                        if retrieval_tool_name == 'retrieve_hierarchical':
+                            tool_args["collection"] = router_output
+                        else:
+                            tool_args["collection_name"] = router_output
+
+                        # Invoke the tool manually
+                        retrieval_result = retrieval_tool.invoke(tool_args)
+                        
+                        # Append the manual result to messages so the LLM can see it (or we just format it)
+                        # Since we can't easily continue the agent loop, we will just append it 
+                        # to our processed tool_responses list for the final formatter.
+                        
+                        # Create a synthetic ToolMessage for the formatter
+                        manual_tool_msg = ToolMessage(
+                            content=retrieval_result,
+                            tool_call_id="manual_fallback_call",
+                            name=retrieval_tool_name
+                        )
+                        messages.append(manual_tool_msg)
+                        
+                        # Optionally, we could ask the LLM to summarize this new context, 
+                        # but for robustness, the standard formatter is often safer if the LLM is flaky.
+                        
+                    except Exception as e:
+                        log(f"Manual retrieval failed: {e}")
+
+            # --- FALLBACK LOGIC END ---
 
             tool_responses = []
             ai_responses = []
             
-            for i, msg in enumerate(result['messages']):
-                if type(msg).__name__ == 'ToolMessage':
+            for i, msg in enumerate(messages):
+                if isinstance(msg, ToolMessage):
                     tool_responses.append({
                         'name': getattr(msg, 'name', 'unknown_tool'),
                         'content': msg.content
                     })
-                elif type(msg).__name__ == 'AIMessage' and msg.content.strip():
-                    ai_responses.append(msg.content.strip())
+                elif isinstance(msg, AIMessage) and msg.content.strip():
+                    # Clean think tags from AI responses in history too if needed, 
+                    # but mostly we care about the final answer.
+                    content = _clean_think_tags(msg.content.strip())
+                    if content:
+                        ai_responses.append(content)
 
-            final_llm_answer = result['messages'][-1].content if result['messages'] else ""
+            final_llm_answer = messages[-1].content if messages else ""
+            final_llm_answer = _clean_think_tags(final_llm_answer)
             
+            # If we added a manual tool message at the end, the final_llm_answer (from previous step) is outdated/irrelevant.
+            # We should rely on the formatter.
+            if has_routed and not has_retrieved: # meaning we triggered fallback
+                 final_llm_answer = "" # Force formatter usage
+
             if not final_llm_answer.strip() or len(final_llm_answer.strip()) < 10:
                 log("LLM final answer is empty or too short. Building answer from tool responses...")
                 if tool_responses:
@@ -172,7 +280,7 @@ def create_agent_node(llm: ChatOpenAI, tools: List[Callable]) -> Callable:
 
             return {
                 "generation": final_answer,
-                "messages": result['messages']
+                "messages": messages
             }
 
         except Exception as e:

@@ -57,29 +57,28 @@ def create_article_lookup_tool(conn_str: str) -> Callable:
         log(f"Looking up article: {article_key}")
 
         try:
-            engine = create_engine(conn_str)
+            import psycopg2
 
-            # Query using metadata filter
-            query_sql = text("""
-                SELECT
-                    lpe.document as content,
-                    lpe.cmetadata->>'source' as source,
-                    lpe.cmetadata->>'page' as page,
-                    lpe.cmetadata->>'article' as article,
-                    lpe.cmetadata->>'article_chunk_seq' as chunk_seq
-                FROM langchain_pg_embedding lpe
-                JOIN langchain_pg_collection lpc ON lpe.collection_id = lpc.uuid
-                WHERE lpc.name = :collection_name
-                  AND lpe.cmetadata->>'article' = :article_key
-                ORDER BY CAST(lpe.cmetadata->>'article_chunk_seq' AS INTEGER)
-            """)
-
-            with engine.connect() as conn:
-                result = conn.execute(
-                    query_sql,
-                    {"collection_name": collection_name, "article_key": article_key}
-                )
-                rows = result.fetchall()
+            clean_conn = conn_str.replace("postgresql+psycopg2://", "postgresql://")
+            with psycopg2.connect(clean_conn) as conn:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        """
+                        SELECT
+                            dc.content,
+                            dc.source_file,
+                            dc.page_number,
+                            dc.article_number,
+                            dc.section_path
+                        FROM rag_document_chunks dc
+                        JOIN rag_documents d ON dc.document_id = d.id
+                        WHERE d.title = %s
+                          AND dc.article_number = %s
+                        ORDER BY dc.depth, dc.section_path
+                        """,
+                        (collection_name, article_key),
+                    )
+                    rows = cur.fetchall()
 
             if not rows:
                 log(f"Article {article_key} not found in collection '{collection_name}'")
@@ -87,18 +86,12 @@ def create_article_lookup_tool(conn_str: str) -> Callable:
 
             log(f"Found {len(rows)} chunk(s) for article {article_key}")
 
-            # Format results
             result_parts = []
             for row in rows:
-                content = row[0]  # document content
-                source = row[1]   # source
-                page = row[2]     # page
-                article = row[3]  # article
-                chunk_seq = row[4] # chunk_seq
-
+                content, source, page, article, section_path = row
                 formatted = (
                     f"=== {article} (來自 {collection_name}) ===\n"
-                    f"來源: {source}, 頁碼: {page}\n"
+                    f"來源: {source}, 頁碼: {page}, 節點: {section_path}\n"
                     f"內容:\n{content}\n"
                 )
                 result_parts.append(formatted)

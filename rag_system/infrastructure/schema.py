@@ -8,6 +8,15 @@ from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
 from ..common import log
 
+COLLECTION_STATS_SQL = """
+SELECT
+    collection_name AS name,
+    COUNT(*) AS doc_count
+FROM langchain_pg_collection
+GROUP BY collection_name
+ORDER BY doc_count DESC;
+"""
+
 
 # SQL for creating the hierarchical schema
 HIERARCHICAL_SCHEMA_SQL = """
@@ -244,8 +253,6 @@ def verify_schema(conn_str: str) -> dict:
                 # Check key indexes
                 expected_indexes = [
                     "idx_chunks_section_path",
-                    "idx_embeddings_summary_vector",
-                    "idx_embeddings_detail_vector",
                 ]
 
                 for index in expected_indexes:
@@ -256,6 +263,21 @@ def verify_schema(conn_str: str) -> dict:
                         )
                     """, (index,))
                     results["indexes"][index] = cur.fetchone()[0]
+
+                # Collection stats are optional, used by router
+                try:
+                    cur.execute("""
+                        SELECT name, COUNT(*) AS doc_count
+                        FROM langchain_pg_collection
+                        GROUP BY name
+                        ORDER BY doc_count DESC
+                    """)
+                    results["collections"] = [
+                        {"name": r[0], "doc_count": r[1]}
+                        for r in cur.fetchall()
+                    ]
+                except Exception:
+                    results["collections"] = []
 
         return results
 
@@ -293,3 +315,41 @@ def get_schema_info(conn_str: str) -> str:
         info.append(f"  {status} {index}")
 
     return "\n".join(info)
+
+
+def get_collection_stats(conn_str: str):
+    """Return collection names and document counts for routing."""
+    try:
+        clean_conn_str = conn_str.replace("postgresql+psycopg2://", "postgresql://")
+        with psycopg2.connect(clean_conn_str) as conn:
+            with conn.cursor() as cur:
+                # Check if rag_documents exists
+                cur.execute("""
+                    SELECT EXISTS (
+                        SELECT FROM pg_tables
+                        WHERE tablename = 'rag_documents'
+                    )
+                """)
+                if cur.fetchone()[0]:
+                    # Use new schema
+                    # Use id as name to ensure compatibility with DocumentId lookup
+                    cur.execute("""
+                        SELECT id as name, chunk_count as doc_count
+                        FROM rag_documents
+                        WHERE chunk_count > 0
+                        ORDER BY chunk_count DESC
+                    """)
+                else:
+                    # Fallback to old schema
+                    cur.execute("""
+                        SELECT name, COUNT(*) AS doc_count
+                        FROM langchain_pg_collection
+                        GROUP BY name
+                        ORDER BY doc_count DESC
+                    """)
+                
+                rows = cur.fetchall()
+                return [{"name": r[0], "doc_count": r[1]} for r in rows]
+    except Exception as e:
+        log(f"Error fetching collection stats: {e}")
+        return []

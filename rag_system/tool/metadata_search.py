@@ -2,6 +2,7 @@
 import re
 from typing import Callable, Dict, Any, Optional
 from langchain.tools import tool
+import psycopg2
 from sqlalchemy import create_engine, text
 from ..common import log
 
@@ -92,30 +93,35 @@ def create_metadata_search_tool(conn_str: str) -> Callable:
             return "錯誤：必須至少提供一個搜尋條件 (article, page, 或 source)。"
 
         try:
-            engine = create_engine(conn_str)
+            # Prefer hierarchical storage if exists
+            clean_conn = conn_str.replace("postgresql+psycopg2://", "postgresql://")
+            with psycopg2.connect(clean_conn) as conn:
+                with conn.cursor() as cur:
+                    sql = """
+                        SELECT
+                            dc.content,
+                            dc.source_file,
+                            dc.page_number,
+                            dc.article_number,
+                            dc.section_path
+                        FROM rag_document_chunks dc
+                        JOIN rag_documents d ON dc.document_id = d.id
+                        WHERE d.title = %(collection_name)s
+                    """
+                    dyn_filters = []
+                    if article:
+                        dyn_filters.append("dc.article_number = %(article)s")
+                    if page:
+                        dyn_filters.append("dc.page_number = %(page)s")
+                    if source:
+                        dyn_filters.append("dc.source_file ILIKE %(source)s")
 
-            # Build dynamic SQL query
-            where_clause = " AND ".join(conditions)
-            query_sql = text(f"""
-                SELECT
-                    lpe.document as content,
-                    lpe.cmetadata->>'source' as source,
-                    lpe.cmetadata->>'page' as page,
-                    lpe.cmetadata->>'article' as article,
-                    lpe.cmetadata->>'article_chunk_seq' as chunk_seq
-                FROM langchain_pg_embedding lpe
-                JOIN langchain_pg_collection lpc ON lpe.collection_id = lpc.uuid
-                WHERE lpc.name = :collection_name
-                  AND {where_clause}
-                ORDER BY
-                    lpe.cmetadata->>'article',
-                    CAST(lpe.cmetadata->>'article_chunk_seq' AS INTEGER)
-                LIMIT 20
-            """)
+                    if dyn_filters:
+                        sql += " AND " + " AND ".join(dyn_filters)
+                    sql += " ORDER BY dc.depth, dc.section_path LIMIT 20"
 
-            with engine.connect() as conn:
-                result = conn.execute(query_sql, params)
-                rows = result.fetchall()
+                    cur.execute(sql, params)
+                    rows = cur.fetchall()
 
             if not rows:
                 criteria = ", ".join([
@@ -135,13 +141,15 @@ def create_metadata_search_tool(conn_str: str) -> Callable:
                 doc_source = row[1]
                 doc_page = row[2]
                 doc_article = row[3]
-                chunk_seq = row[4]
+                section_path = row[4]
 
                 metadata_info = []
                 if doc_article:
                     metadata_info.append(f"條文: {doc_article}")
                 if doc_page:
                     metadata_info.append(f"頁碼: {doc_page}")
+                if section_path:
+                    metadata_info.append(f"節點: {section_path}")
                 metadata_str = ", ".join(metadata_info) if metadata_info else "N/A"
 
                 formatted = (

@@ -499,18 +499,18 @@ class VectorStoreRepository:
                 with conn.cursor() as cur:
                     if document_id:
                         cur.execute(f"""
-                            SELECT e.chunk_id, (1 - (e.embedding <=> %s)) as similarity
+                            SELECT e.chunk_id, (1 - (e.embedding <=> %s::vector)) as similarity
                             FROM {table} e
                             JOIN rag_document_chunks c ON e.chunk_id = c.id
                             WHERE c.document_id = %s
-                            ORDER BY e.embedding <=> %s
+                            ORDER BY e.embedding <=> %s::vector
                             LIMIT %s
                         """, (query_embedding.tolist(), str(document_id), query_embedding.tolist(), k))
                     else:
                         cur.execute(f"""
-                            SELECT chunk_id, (1 - (embedding <=> %s)) as similarity
+                            SELECT chunk_id, (1 - (embedding <=> %s::vector)) as similarity
                             FROM {table}
-                            ORDER BY embedding <=> %s
+                            ORDER BY embedding <=> %s::vector
                             LIMIT %s
                         """, (query_embedding.tolist(), query_embedding.tolist(), k))
 

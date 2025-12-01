@@ -1,28 +1,32 @@
-# Use an official Python runtime as a parent image
-FROM python:3.11-slim
+FROM quay.io/jupyter/minimal-notebook:2025-09-30
 
-# Set the working directory in the container
-WORKDIR /app
+# 資源對齊 NB_RAG_Agentic，允許自訂 UID/GID 以匹配主機使用者
+ARG NB_UID=1026
+ARG NB_GID=516
 
-# Install system dependencies that might be required by Python packages
-# For example, psycopg2 might need gcc and other build tools if not using the binary version.
-# We keep this minimal for now.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential \
-    && rm -rf /var/lib/apt/lists/*
+COPY requirements.txt /tmp/requirements.txt
 
-# Copy the requirements file into the container
-COPY requirements.txt .
+USER root
 
-# Install any needed packages specified in requirements.txt
-# Use --no-cache-dir to reduce image size
-RUN pip install --no-cache-dir -r requirements.txt
+# 將 jovyan 的 UID/GID 調整為與主機一致，並修正主目錄權限
+RUN groupmod -g ${NB_GID} users && \
+    usermod -u ${NB_UID} jovyan && \
+    chown -R ${NB_UID}:${NB_GID} /home/jovyan
 
-# Copy the entire project directory into the container
-COPY . .
+# 必要套件：Node/npm + 三家 CLI、Python 依賴、sudo 權限
+RUN apt-get update && apt-get install -yq nodejs npm && \
+    npm install -g @openai/codex@latest && \
+    npm install -g @anthropic-ai/claude-code@latest && \
+    npm install -g @google/gemini-cli@latest && \
+    npm install -g @github/copilot && \
+    pip install --no-cache-dir -r /tmp/requirements.txt && \
+    rm /tmp/requirements.txt && \
+    echo "jovyan ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers && \
+    apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# By default, when the container starts, it will open a shell.
-# This allows the user to run any script they want (e.g., ./build_all.sh or ./query.sh)
-# For a more specific use case, you could change this to:
-# CMD ["./build_all.sh"]
-CMD ["bash"]
+USER ${NB_UID}
+
+WORKDIR /home/jovyan/work
+
+# 同時啟動 Codex app-server 與 Jupyter，禁用 token/password（限內網使用）
+CMD ["sh", "-c", "codex app-server & start-notebook.py --port=${JUPYTER_PORT:-25678} --NotebookApp.token='' --NotebookApp.password=''"]

@@ -5,7 +5,7 @@ import numpy as np
 
 from ..domain import Document, DocumentId, IndexingLevel
 from ..infrastructure import HierarchicalDocumentRepository, VectorStoreRepository
-from ..common import log
+from ..common import logger, log_json # Changed import from log to logger, log_json
 from .chunking import HierarchicalChunker
 
 
@@ -48,7 +48,7 @@ class EmbeddingService:
             return embedding
 
         except Exception as e:
-            log(f"Error generating embedding: {e}")
+            logger.error(f"Error generating embedding: {e}") # Updated logging
             raise
 
     def embed_batch(self, texts: list[str]) -> list[np.ndarray]:
@@ -70,7 +70,7 @@ class EmbeddingService:
                 return [self.embed_text(text) for text in texts]
 
         except Exception as e:
-            log(f"Error generating batch embeddings: {e}")
+            logger.error(f"Error generating batch embeddings: {e}") # Updated logging
             # Fall back to individual embedding
             return [self.embed_text(text) for text in texts]
 
@@ -125,53 +125,94 @@ class IndexDocumentUseCase:
             ValueError: If document already exists and force_reindex=False
         """
         if not file_path.exists():
+            logger.error(f"File not found: {file_path}")
             raise FileNotFoundError(f"File not found: {file_path}")
 
         # Generate document ID if not provided
         if document_id is None:
             document_id = DocumentId.from_filename(file_path.name)
 
-        log(f"Indexing document: {document_id} from {file_path.name}")
+        logger.info(f"Indexing document: {document_id} from {file_path.name}")
+        log_json("document_indexing_start", {
+            "document_id": str(document_id),
+            "file_name": file_path.name,
+            "file_path": str(file_path),
+            "force_reindex": force_reindex
+        })
 
         # Check if document already exists
         existing_doc = self.doc_repository.get_document(document_id)
         if existing_doc and not force_reindex:
+            logger.warning(
+                f"Document {document_id} already exists. "
+                f"Use force_reindex=True to reindex."
+            )
+            log_json("document_indexing_skipped", {
+                "document_id": str(document_id),
+                "file_name": file_path.name,
+                "reason": "already_exists_no_reindex"
+            }, level="warning")
             raise ValueError(
                 f"Document {document_id} already exists. "
                 f"Use force_reindex=True to reindex."
             )
 
         # Step 1: Chunk document into hierarchy
-        log("  Step 1: Chunking document...")
+        logger.info("  Step 1: Chunking document...")
         document = self.chunker.chunk_file(file_path, document_id)
-        log(f"    Created {len(document.chunks)} chunks")
+        logger.info(f"    Created {len(document.chunks)} chunks")
 
         # Step 2: Save document metadata
-        log("  Step 2: Saving document metadata...")
+        logger.info("  Step 2: Saving document metadata...")
         success = self.doc_repository.save_document(document)
         if not success:
+            logger.error(f"Failed to save document {document_id}")
+            log_json("document_indexing_failed", {
+                "document_id": str(document_id),
+                "file_name": file_path.name,
+                "reason": "failed_to_save_metadata"
+            }, level="error")
             raise RuntimeError(f"Failed to save document {document_id}")
 
         # Step 3: Save chunks in batch
-        log("  Step 3: Saving chunks...")
+        logger.info("  Step 3: Saving chunks...")
         success = self.doc_repository.save_chunks_batch(document.chunks)
         if not success:
+            logger.error(f"Failed to save chunks for {document_id}")
+            log_json("document_indexing_failed", {
+                "document_id": str(document_id),
+                "file_name": file_path.name,
+                "reason": "failed_to_save_chunks"
+            }, level="error")
             raise RuntimeError(f"Failed to save chunks for {document_id}")
 
         # Step 4: Build closure table for hierarchy
-        log("  Step 4: Building hierarchy closure table...")
+        logger.info("  Step 4: Building hierarchy closure table...")
         success = self.doc_repository.build_closure_table(document_id)
         if not success:
-            log("    Warning: Failed to build closure table")
+            logger.warning("    Warning: Failed to build closure table")
+            log_json("document_indexing_warning", {
+                "document_id": str(document_id),
+                "file_name": file_path.name,
+                "reason": "failed_to_build_closure_table"
+            }, level="warning")
 
         # Step 5: Generate and save embeddings
-        log("  Step 5: Generating embeddings...")
+        logger.info("  Step 5: Generating embeddings...")
         self._embed_and_store_chunks(document)
 
-        log(f"✓ Successfully indexed document {document_id}")
-        log(f"  - Total chunks: {len(document.chunks)}")
-        log(f"  - Summary chunks: {len(document.get_chunks_by_level(IndexingLevel.SUMMARY))}")
-        log(f"  - Detail chunks: {len(document.get_chunks_by_level(IndexingLevel.DETAIL))}")
+        logger.info(f"✓ Successfully indexed document {document_id}")
+        logger.info(f"  - Total chunks: {len(document.chunks)}")
+        logger.info(f"  - Summary chunks: {len(document.get_chunks_by_level(IndexingLevel.SUMMARY))}")
+        logger.info(f"  - Detail chunks: {len(document.get_chunks_by_level(IndexingLevel.DETAIL))}")
+        log_json("document_indexing_complete", {
+            "document_id": str(document_id),
+            "file_name": file_path.name,
+            "total_chunks": len(document.chunks),
+            "summary_chunks": len(document.get_chunks_by_level(IndexingLevel.SUMMARY)),
+            "detail_chunks": len(document.get_chunks_by_level(IndexingLevel.DETAIL))
+        })
+
 
         return document
 
@@ -193,12 +234,12 @@ class IndexDocumentUseCase:
 
         # Generate and store summary embeddings
         if summary_chunks:
-            log(f"    Embedding {len(summary_chunks)} summary chunks...")
+            logger.info(f"    Embedding {len(summary_chunks)} summary chunks...") # Updated logging
             self._embed_and_store_batch(summary_chunks, IndexingLevel.SUMMARY)
 
         # Generate and store detail embeddings
         if detail_chunks:
-            log(f"    Embedding {len(detail_chunks)} detail chunks...")
+            logger.info(f"    Embedding {len(detail_chunks)} detail chunks...") # Updated logging
             self._embed_and_store_batch(detail_chunks, IndexingLevel.DETAIL)
 
     def _embed_and_store_batch(self, chunks: list, level: IndexingLevel):
@@ -215,7 +256,7 @@ class IndexDocumentUseCase:
         try:
             embeddings = self.embedding_service.embed_batch(texts)
         except Exception as e:
-            log(f"    Batch embedding failed: {e}, falling back to individual")
+            logger.error(f"    Batch embedding failed: {e}, falling back to individual") # Updated logging
             embeddings = [self.embedding_service.embed_text(text) for text in texts]
 
         # Store embeddings
@@ -226,7 +267,7 @@ class IndexDocumentUseCase:
                 level
             )
             if not success:
-                log(f"    Warning: Failed to save embedding for chunk {chunk.id}")
+                logger.warning(f"    Warning: Failed to save embedding for chunk {chunk.id}") # Updated logging
 
 
 class BulkIndexUseCase:
@@ -264,8 +305,14 @@ class BulkIndexUseCase:
             "errors": []
         }
 
+        log_json("bulk_indexing_start", {
+            "total_files": len(file_paths),
+            "force_reindex": force_reindex,
+            "skip_errors": skip_errors
+        })
+
         for i, file_path in enumerate(file_paths, 1):
-            log(f"\n[{i}/{len(file_paths)}] Processing {file_path.name}...")
+            logger.info(f"\n[{i}/{len(file_paths)}] Processing {file_path.name}...") # Updated logging
 
             try:
                 document = self.index_document.execute(
@@ -277,10 +324,10 @@ class BulkIndexUseCase:
             except ValueError as e:
                 # Document already exists
                 if "already exists" in str(e):
-                    log(f"  Skipped: {e}")
+                    logger.info(f"  Skipped: {e}") # Updated logging
                     results["skipped"] += 1
                 else:
-                    log(f"  Error: {e}")
+                    logger.error(f"  Error: {e}") # Updated logging
                     results["failed"] += 1
                     results["errors"].append({
                         "file": file_path.name,
@@ -290,7 +337,7 @@ class BulkIndexUseCase:
                         raise
 
             except Exception as e:
-                log(f"  Error: {e}")
+                logger.error(f"  Error: {e}") # Updated logging
                 results["failed"] += 1
                 results["errors"].append({
                     "file": file_path.name,
@@ -299,16 +346,20 @@ class BulkIndexUseCase:
                 if not skip_errors:
                     raise
 
-        log("\n" + "="*60)
-        log(f"Bulk indexing complete:")
-        log(f"  Total: {results['total']}")
-        log(f"  Success: {results['success']}")
-        log(f"  Skipped: {results['skipped']}")
-        log(f"  Failed: {results['failed']}")
+        logger.info("\n" + "="*60) # Updated logging
+        logger.info(f"Bulk indexing complete:") # Updated logging
+        logger.info(f"  Total: {results['total']}") # Updated logging
+        logger.info(f"  Success: {results['success']}") # Updated logging
+        logger.info(f"  Skipped: {results['skipped']}") # Updated logging
+        logger.info(f"  Failed: {results['failed']}") # Updated logging
 
         if results["errors"]:
-            log(f"\nErrors:")
+            logger.info(f"\nErrors:") # Updated logging
             for err in results["errors"]:
-                log(f"  - {err['file']}: {err['error']}")
+                logger.info(f"  - {err['file']}: {err['error']}") # Updated logging
+            log_json("bulk_indexing_complete", results, level="error")
+        else:
+            log_json("bulk_indexing_complete", results)
+
 
         return results

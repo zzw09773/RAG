@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from ..domain import (
     Document, Chunk, ChunkId, DocumentId, HierarchyPath,
@@ -18,11 +18,12 @@ from ..common import log
 
 
 # Regex patterns for Chinese legal documents
-_RE_ARTICLE = re.compile(r"^(第\s*[一二三四五六七八九十百千零兩两0-9]+\s*條)", re.MULTILINE)
-_RE_CHAPTER = re.compile(r"^(第\s*[一二三四五六七八九十百千零〇○兩两0-9]+\s*章)", re.MULTILINE)
-_RE_SECTION = re.compile(r"^(第\s*[一二三四五六七八九十百千零〇○兩两0-9]+\s*款)", re.MULTILINE)
-_RE_NUMBERED_ITEM = re.compile(r"^([一二三四五六七八九十百千]+、)", re.MULTILINE)
-_RE_SUBITEM = re.compile(r"^(（[一二三四五六七八九十百千]+）)", re.MULTILINE)
+# Allow optional leading whitespace with \s*
+_RE_ARTICLE = re.compile(r"^\s*(第\s*[一二三四五六七八九十百千零兩两0-9]+\s*條)", re.MULTILINE)
+_RE_CHAPTER = re.compile(r"^\s*(第\s*[一二三四五六七八九十百千零〇○兩两0-9]+\s*章)", re.MULTILINE)
+_RE_SECTION = re.compile(r"^\s*(第\s*[一二三四五六七八九十百千零〇○兩两0-9]+\s*款)", re.MULTILINE)
+_RE_NUMBERED_ITEM = re.compile(r"^\s*([一二三四五六七八九十百千]+、)", re.MULTILINE)
+_RE_SUBITEM = re.compile(r"^\s*(（[一二三四五六七八九十百千]+）)", re.MULTILINE)
 
 
 @dataclass

@@ -20,7 +20,7 @@ def create_hierarchical_retrieve_tool(
     verify_ssl: bool = True,
     top_k: int = 5,
     content_max_length: int = 800,
-    strategy: str = "summary_first",
+    strategy: str = "direct",
     embedding_dimension: int = 1024
 ):
     """Create a hierarchical retrieval tool for the agent.
@@ -126,8 +126,6 @@ def create_hierarchical_retrieve_tool(
                 # Add hierarchical context indicator
                 if metadata.get("has_parents"):
                     entry += f"  [包含 {metadata['parent_count']} 層上層內容]\n"
-                if metadata.get("has_children"):
-                    entry += f"  [包含 {metadata['child_count']} 個子項目]\n"
 
                 entry += f"\n{content}\n"
 
@@ -193,7 +191,7 @@ def create_hybrid_retrieve_tool(
             verify_ssl=verify_ssl,
             top_k=top_k,
             content_max_length=content_max_length,
-            strategy="summary_first",
+            strategy="direct",
             embedding_dimension=embedding_dimension
         )
     else:

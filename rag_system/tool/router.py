@@ -1,9 +1,10 @@
 """Collection routing tool for the legal RAG assistant."""
 from typing import Callable
+import re
 from langchain.tools import tool
 from langchain_openai import ChatOpenAI
 from ..common import log
-from ..build.db_utils import get_collection_stats
+from ..infrastructure.schema import get_collection_stats
 
 ROUTER_PROMPT_TEMPLATE = """You are an expert router for legal document collections. Based on the user's question and the available collections, choose the single best collection to search.
 
@@ -68,7 +69,11 @@ def create_router_tool(llm: ChatOpenAI, conn_str: str) -> Callable:
             )
 
             response = llm.invoke(prompt)
-            selected_collection = response.content.strip()
+            content = response.content.strip()
+            
+            # Remove <think>...</think> block if present
+            content = re.sub(r'<think>.*?</think>', '', content, flags=re.DOTALL).strip()
+            selected_collection = content
 
             collection_names = [s['name'] for s in stats]
             if selected_collection in collection_names:

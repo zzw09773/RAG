@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import List, Optional, Set
 import numpy as np
 
-from ..domain import Chunk, ChunkId, DocumentId, IndexingLevel
+from ..domain import Chunk, ChunkId, DocumentId, IndexingLevel, ChunkType
 from ..infrastructure import HierarchicalDocumentRepository, VectorStoreRepository
 from ..common import log
 from .indexing import EmbeddingService
@@ -19,6 +19,27 @@ class RetrievalResult:
     children_chunks: List[Chunk]  # Child chunks for detail
     sibling_chunks: List[Chunk]  # Sibling chunks for breadth
 
+    def _get_display_title(self, chunk: Chunk) -> str:
+        """Helper to get a human-readable title for a chunk."""
+        ctype = chunk.chunk_type.value if hasattr(chunk.chunk_type, 'value') else str(chunk.chunk_type)
+        
+        if ctype == 'document':
+            return f"文件: {chunk.source_file}"
+            
+        if ctype == 'chapter' and chunk.chapter_number:
+            # Try to get full title from content first line
+            first_line = chunk.content.split('\n', 1)[0].strip()
+            # If first line looks like a title (contains the number), use it
+            if chunk.chapter_number in first_line:
+                return first_line
+            return chunk.chapter_number
+            
+        if ctype == 'article' and chunk.article_number:
+            return chunk.article_number
+            
+        # Fallback to section path string
+        return str(chunk.section_path)
+
     @property
     def full_context(self) -> str:
         """Get full context by combining parent, current, and child content."""
@@ -27,16 +48,24 @@ class RetrievalResult:
         # Add parent context (from root to immediate parent)
         for i, parent in enumerate(reversed(self.parent_chunks)):
             indent = "  " * i
-            parts.append(f"{indent}【上層】{parent.section_path}:\n{parent.content}\n")
+            title = self._get_display_title(parent)
+            parts.append(f"{indent}【上層】{title}")
 
         # Add current chunk
-        parts.append(f"【主要內容】{self.chunk.section_path}:\n{self.chunk.content}\n")
+        current_title = self._get_display_title(self.chunk)
+        parts.append(f"【主要內容】{current_title}:\n{self.chunk.content}\n")
 
         # Add children if any
         if self.children_chunks:
-            parts.append(f"\n【下層詳細內容】:")
+            parts.append(f"【下層詳細內容】:")
             for child in self.children_chunks:
-                parts.append(f"  - {child.section_path}: {child.content[:200]}...\n")
+                # Also truncate children slightly if they are extremely long
+                c_content = child.content.strip()
+                if len(c_content) > 300:
+                    c_content = c_content[:300] + "..."
+                
+                c_title = self._get_display_title(child)
+                parts.append(f"  - {c_title}:\n    {c_content}\n")
 
         return "\n".join(parts)
 

@@ -19,7 +19,6 @@ from .tool import (
     create_retrieve_tool,
     create_router_tool,
 )
-from .tool.calculator import create_calculator_tool
 from .tool.retrieve_hierarchical import create_hybrid_retrieve_tool
 from .common import log
 
@@ -78,14 +77,12 @@ def _build_tools(
 
     metadata_tool = create_metadata_search_tool(conn_str=config.conn_string)
     article_lookup_tool = create_article_lookup_tool(conn_str=config.conn_string)
-    calculator_tool = create_calculator_tool()
 
     return [
         router_tool,
         retrieval_tool,
         metadata_tool,
         article_lookup_tool,
-        calculator_tool,
     ]
 
 
@@ -93,7 +90,7 @@ def create_rag_workflow(
     config: RAGConfig,
     *,
     llm: Optional[ChatOpenAI] = None,
-    use_hierarchical: bool = False,
+    use_hierarchical: bool = True,
 ):
     """Create and compile the LangGraph workflow for notebooks or services."""
     config.validate()
@@ -112,7 +109,7 @@ def run_query(
     *,
     llm: Optional[ChatOpenAI] = None,
     messages: Optional[list] = None,
-    use_hierarchical: bool = False,
+    use_hierarchical: bool = True,
 ):
     """Execute a single query through the workflow and return the state."""
     workflow = create_rag_workflow(

@@ -1,20 +1,63 @@
+import os
 import sys
 import warnings
-from typing import List
+from typing import List, Any, Dict
 import httpx
+import logging
+import json
+from datetime import datetime # Added datetime import
 
-# Global flag to control logging output
-_QUIET_MODE = False
+# Configure basic logging
+LOG_LEVEL = os.environ.get("RAG_LOG_LEVEL", "INFO").upper()
+# Set up a logger that outputs to stderr
+logging.basicConfig(
+    level=LOG_LEVEL,
+    format='%(asctime)s - %(levelname)s - %(name)s - %(message)s',
+    stream=sys.stderr
+)
+# Create a logger for the common module
+logger = logging.getLogger(__name__)
+
+# Global flag to control logging output (default: quiet for initial simple log)
+_QUIET_MODE = os.environ.get("RAG_LOG_VERBOSE", "0").lower() not in ("1", "true", "yes", "on")
 
 def set_quiet_mode(quiet: bool = True):
-    """Enable or disable quiet mode globally."""
+    """Enable or disable quiet mode globally (for backward compatibility with simple log)."""
     global _QUIET_MODE
     _QUIET_MODE = quiet
 
-def log(msg: str):
-    """Simple, unified logging function. Respects global quiet mode."""
+def log(msg: str, level: str = "info"):
+    """
+    Simple logging function, now using Python's standard logging.
+    Respects _QUIET_MODE for backward compatibility with previous simple log calls.
+    """
     if not _QUIET_MODE:
-        print(f"[LOG] {msg}", file=sys.stderr, flush=True)
+        if level.lower() == "debug":
+            logger.debug(msg)
+        elif level.lower() == "info":
+            logger.info(msg)
+        elif level.lower() == "warning":
+            logger.warning(msg)
+        elif level.lower() == "error":
+            logger.error(msg)
+        elif level.lower() == "critical":
+            logger.critical(msg)
+        else:
+            logger.info(msg) # Default to info
+
+def log_json(event_name: str, data: Dict[str, Any], level: str = "info"):
+    """
+    Logs structured data as a JSON string.
+    Useful for audit logs and machine readability.
+    """
+    log_entry = {
+        "event": event_name,
+        "timestamp": datetime.utcnow().isoformat() + "Z", # ISO 8601 UTC
+        "data": data
+    }
+    json_msg = json.dumps(log_entry, ensure_ascii=False)
+    log(json_msg, level)
+
 
 class LocalApiEmbeddings:
     """
@@ -48,20 +91,20 @@ class LocalApiEmbeddings:
         """Embeds a list of documents, handling batching automatically."""
         all_embeddings = []
         num_texts = len(texts)
-        log(f"Embedding {num_texts} documents in batches of {self.batch_size}...")
+        logger.info(f"Embedding {num_texts} documents in batches of {self.batch_size}...")
         
         for i in range(0, num_texts, self.batch_size):
             batch = texts[i:i + self.batch_size]
             num_batches = (num_texts + self.batch_size - 1) // self.batch_size
-            log(f"Processing batch {i//self.batch_size + 1}/{num_batches}")
+            logger.info(f"Processing batch {i//self.batch_size + 1}/{num_batches}")
             try:
                 batch_embeddings = self._embed_batch(batch)
                 all_embeddings.extend(batch_embeddings)
             except httpx.HTTPStatusError as e:
-                print(f"[ERROR] Batch failed with status {e.response.status_code}: {e.response.text}", file=sys.stderr)
+                logger.error(f"Batch failed with status {e.response.status_code}: {e.response.text}")
                 raise  # Re-raise the exception after logging
             except httpx.RequestError as e:
-                print(f"[ERROR] Batch failed due to request error: {e}", file=sys.stderr)
+                logger.error(f"Batch failed due to request error: {e}")
                 raise
 
         return all_embeddings
@@ -78,15 +121,16 @@ class LocalApiEmbeddings:
             "encoding_format": "float"
         }
         
-        log(f"Sending {len(texts)} texts to {self.api_base}/embeddings")
+        logger.info(f"Sending {len(texts)} texts to {self.api_base}/embeddings")
         response = self.client.post(f"{self.api_base}/embeddings", headers=headers, json=payload)
         response.raise_for_status()  # Will raise an exception for 4xx/5xx responses
         
         data = response.json()
         embeddings = [item["embedding"] for item in data["data"]]
-        log(f"Successfully received {len(embeddings)} vectors.")
+        logger.info(f"Successfully received {len(embeddings)} vectors.")
         return embeddings
 
     def embed_query(self, text: str) -> List[float]:
         """Embeds a single query."""
         return self.embed_documents([text])[0]
+
