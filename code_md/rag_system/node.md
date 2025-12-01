@@ -1,10 +1,12 @@
+# rag_system/node.py
+```python
 """ReAct agent node implementation."""
 from typing import List, Callable
 import json
 import re
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
-from langchain_core.messages import ToolMessage, AIMessage, SystemMessage, HumanMessage
+from langchain_core.messages import ToolMessage, AIMessage
 from .state import GraphState
 from .common import log
 
@@ -14,17 +16,15 @@ SYSTEM_PROMPT = """You are a legal document assistant specialized in retrieving 
 
 Core requirements:
 1. Always ground every answer in retrieved documents. Do not rely on prior knowledge alone.
-2. First call the collection_router tool to decide the collection, then use retrieve_hierarchical (and metadata/search tools if needed) before concluding.
-3. Structure your final answer strictly into three sections:
-   - **問題答案**: Detailed answer to the user's question, citing specific articles.
-   - **結論**: A concise summary of the findings.
-   - **參考資料**: A list of all referenced documents and articles.
-4. If no relevant documents are found, explicitly state that the knowledge base lacks information.
+2. First call the collection_router tool to decide the collection, then use retrieve_legal_documents (and metadata/search tools if needed) before concluding.
+3. When you answer, clearly reference the supporting evidence. The answer must include a '參考資料' section listing every document via lines formatted as '來源: <檔名>…'.
+4. If no relevant documents are found, explicitly state that the knowledge base lacks information instead of fabricating details.
 
 IMPORTANT INSTRUCTIONS:
 - Do not output internal thought processes in <think> tags.
-- After receiving the collection name from 'collection_router', you MUST immediately call 'retrieve_hierarchical' with the query and the collection name to get the document content.
+- After receiving the collection name from 'collection_router', you MUST immediately call 'retrieve_hierarchical' (or 'retrieve_legal_documents') with the query and the collection name to get the document content.
 - Do not stop until you have retrieved the actual text of the law.
+- If you need to use a tool, output the tool call directly in the expected format.
 
 ### ONE-SHOT EXAMPLE (Follow this behavior):
 
@@ -33,16 +33,7 @@ Assistant: (Calls tool 'collection_router' with query="陸海空軍懲罰法 第
 Tool Output: "陸海空軍懲罰法"
 Assistant: (Calls tool 'retrieve_hierarchical' with query="第7條", collection="陸海空軍懲罰法")
 Tool Output: "...Article 7 content..."
-Assistant:
-**問題答案**
-根據陸海空軍懲罰法第7條規定...
-
-**結論**
-第7條主要規範了...
-
-**參考資料**
-- 來源: 陸海空軍懲罰法.md
-  - 條文: 第7條
+Assistant: 根據陸海空軍懲罰法第7條規定... (Final Answer)
 
 Follow a ReAct style reasoning loop: think → choose tool → observe → repeat → final answer."""
 
@@ -232,7 +223,11 @@ def create_agent_node(llm: ChatOpenAI, tools: List[Callable]) -> Callable:
                         # Invoke the tool manually
                         retrieval_result = retrieval_tool.invoke(tool_args)
                         
-                        # Append the manual result to messages so the LLM can see it
+                        # Append the manual result to messages so the LLM can see it (or we just format it)
+                        # Since we can't easily continue the agent loop, we will just append it 
+                        # to our processed tool_responses list for the final formatter.
+                        
+                        # Create a synthetic ToolMessage for the formatter
                         manual_tool_msg = ToolMessage(
                             content=retrieval_result,
                             tool_call_id="manual_fallback_call",
@@ -240,15 +235,8 @@ def create_agent_node(llm: ChatOpenAI, tools: List[Callable]) -> Callable:
                         )
                         messages.append(manual_tool_msg)
                         
-                        # Re-invoke LLM to process the retrieved data
-                        log("Re-invoking LLM to process manual retrieval results...")
-                        # Prepend the system prompt so the LLM knows the format instructions
-                        messages_with_prompt = [
-                            SystemMessage(content=SYSTEM_PROMPT),
-                            HumanMessage(content="請根據上述工具的執行結果，總結並回答使用者的問題。請嚴格按照以下格式輸出：\n\n**問題答案**\n[詳細回答，引用條文]\n\n**結論**\n[簡潔總結]\n\n**參考資料**\n- 來源: [文件名稱]\n  - 條文: [條文號碼]\n")
-                        ] + messages
-                        fallback_response = llm.invoke(messages_with_prompt)
-                        messages.append(fallback_response)
+                        # Optionally, we could ask the LLM to summarize this new context, 
+                        # but for robustness, the standard formatter is often safer if the LLM is flaky.
                         
                     except Exception as e:
                         log(f"Manual retrieval failed: {e}")
@@ -271,14 +259,14 @@ def create_agent_node(llm: ChatOpenAI, tools: List[Callable]) -> Callable:
                     if content:
                         ai_responses.append(content)
 
-            if messages:
-                last_msg = messages[-1]
-                # log(f"DEBUG: Last message type: {type(last_msg)}")
-                # log(f"DEBUG: Last message content (preview): {last_msg.content[:100]}")
-
             final_llm_answer = messages[-1].content if messages else ""
             final_llm_answer = _clean_think_tags(final_llm_answer)
             
+            # If we added a manual tool message at the end, the final_llm_answer (from previous step) is outdated/irrelevant.
+            # We should rely on the formatter.
+            if has_routed and not has_retrieved: # meaning we triggered fallback
+                 final_llm_answer = "" # Force formatter usage
+
             if not final_llm_answer.strip() or len(final_llm_answer.strip()) < 10:
                 log("LLM final answer is empty or too short. Building answer from tool responses...")
                 if tool_responses:
@@ -289,7 +277,7 @@ def create_agent_node(llm: ChatOpenAI, tools: List[Callable]) -> Callable:
                 final_answer = final_llm_answer
 
             sources = _collect_sources(tool_responses)
-            if sources and "參考資料" not in final_answer:
+            if sources:
                 final_answer = final_answer.rstrip() + _build_sources_section(sources)
 
             return {
@@ -305,3 +293,4 @@ def create_agent_node(llm: ChatOpenAI, tools: List[Callable]) -> Callable:
             return {"generation": f"抱歉，{error_msg}"}
 
     return agent_node
+```

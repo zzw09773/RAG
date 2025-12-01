@@ -269,3 +269,50 @@
 - 在本專案中，**所有可透過 MCP 工具完成的任務，應優先使用 MCP**，而非手寫一次性樣板或 ad-hoc script。  
 - AGENT.md 是本專案唯一的核心技術文件，任何會影響架構與流程的變更，都應反映在此文件中。  
 - 你的目標是：在不破壞既有工作流的前提下，透過 MCP 工具與良好設計，讓自動化流程更穩定、更簡潔、更可維護。
+
+---
+
+# Repository Guidelines（合併自原 AGENTS.md，避免重複文件）
+
+## 結構與模組
+- `rag_system/`：核心程式庫（workflow/agent wiring、工具、application/domain/infrastructure 層）。
+- `notebooks/`：主要入口（`1_build_index.ipynb` 索引、`2_query_verify.ipynb` 查詢/驗證）。
+- `tests/`：pytest 套件（新增測試：`tests/<area>/test_*.py`）。
+- `data/`、`examples/`、`docs/`：樣本語料、範例、開發與治理文件。
+
+## 開發與測試指令
+- 建立環境與安裝依賴：
+  ```bash
+  python3 -m venv venv && source venv/bin/activate
+  pip install -r requirements.txt
+  ```
+- 啟動 PostgreSQL + pgvector（Notebook 必備）：
+  ```bash
+  docker compose up -d
+  docker compose ps   # 確認 healthy
+  ```
+- Notebook 為索引/查詢唯一推薦入口；需要程式化則呼叫 `rag_system.workflow`。
+- 測試：`pytest`（或指定檔案 `pytest tests/unit/test_sources.py`）。
+
+## 編碼與命名
+- Python、4-space indent、必要時加 type hints；對公開 helper 保留 docstring。
+- 函式 snake_case，類 PascalCase，常數 UPPER_SNAKE；避免中英文混雜命名。
+- 偏好小而純的函式；使用 `rag_system/common.py` logging/utilities，避免零散 print。
+
+## 測試原則
+- pytest；fixture 放就近或 `tests/conftest.py`。
+- 命名 `test_<function>_<case>()`；關注排序/訊息等 user-visible 行為。
+- 新邏輯涵蓋路由、檢索 fallback、格式化分支。
+
+## Commit/PR
+- 遵循 Conventional Commit（例：`feat:`、`refactor:`、`chore:`）。
+- 訊息聚焦意圖（例：Add hierarchical routing guard）。
+- PR 要含行為變更摘要、測試結果（pytest 或 Notebook 步驟），UI/輸出變化再附圖。
+
+## 環境與安全
+- `.env` 由模板複製並填 `PGVECTOR_URL` 等；勿提交密鑰或含憑證的 Notebook 輸出。
+- 保留 Docker volumes（`docker compose down -v` 會清資料）。
+- 大型語料放 `data/`，勿提交專有文件；必要時更新 `.gitignore`。
+
+## Canonical
+- 技術哲學/流程/MCP 指南以本檔為唯一來源，若有衝突以此為準。

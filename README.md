@@ -1,97 +1,73 @@
 # Law RAG System
 
-以 Notebook 為主入口的中文法律 RAG 系統，負責解析、切分、向量化 PDF/RTF/DOCX，並寫入 PostgreSQL（pgvector）。
+以 Notebook 為主入口的中文法律 RAG 系統，負責解析、切分、向量化 PDF/RTF/DOCX，並寫入 PostgreSQL（pgvector）。下列內容已合併原 QUICKSTART，作為單一入口指南。
 
 ---
 
-## 🚀 Quick Start
-
-1. **環境需求**：Python 3.9+、Docker + Docker Compose。
-2. **安裝依賴**：
-   ```bash
-   python3 -m venv venv
-   source venv/bin/activate
-   pip install -r requirements.txt
-   ```
-3. **設定環境變數**：新增 `.env`（已加入 `.gitignore`），至少填 `PGVECTOR_URL`、`EMBED_API_BASE`、`EMBED_API_KEY`。Docker compose 預設 DB 位於 `postgresql://postgres:postgres@localhost:15432/Judge`，Jupyter 埠預設 `25678`。
-4. **啟動 Notebook + DB**：
-   ```bash
-   docker compose up -d
-   ```
-   - Jupyter（無 token/password）：http://localhost:25678
-   - PostgreSQL：localhost:15432（與 `PGVECTOR_URL` 預設一致）
+## 🚀 快速開始
+- 環境需求：Python 3.9+，Docker + Docker Compose。
+- 安裝依賴：
+  ```bash
+  python3 -m venv venv
+  source venv/bin/activate
+  pip install -r requirements.txt
+  ```
+- 環境變數：建立 `.env`（已在 `.gitignore`），至少設定 `PGVECTOR_URL`、`EMBED_API_BASE`、`EMBED_API_KEY`。預設 DB：`postgresql://postgres:postgres@localhost:15432/Judge`；Jupyter 連線埠 `25678`。
+- 啟動 DB / Notebook：
+  ```bash
+  docker compose up -d
+  docker compose ps   # 確認 healthy
+  ```
+  - Jupyter（無 token）：http://localhost:25678
+  - PostgreSQL：localhost:15432（對應 `PGVECTOR_URL` 預設）
 
 ---
 
-## 📁 Repository Layout
+## 🧭 開發/操作路徑
+- Notebook（推薦）
+  - `notebooks/1_build_index.ipynb`：初始化階層式 Schema、收集/批次索引 `data/input`（可在 Notebook 調整路徑）。
+  - `notebooks/2_query_verify.ipynb`：載入 workflow，執行查詢與引用驗證。Notebook 開頭會把 repo root 與 venv site-packages 加入 `sys.path`。
+- CLI / HTTP
+  - 單次查詢：`python -m rag_system.cli query "你的問題"`（可加 `--hierarchical`）。
+  - HTTP：`python -m rag_system.cli serve --port 8080`，POST `/query`，body `{ "question": "..." }`。
+  - Shell 包裝：`./query.sh "你的問題"` 直接呼叫 CLI。
 
+---
+
+## 📁 專案結構
 ```
 project_root/
-├── .env                    # 環境變數佔位檔
-├── docker-compose.yaml     # 本地資料庫服務
-├── requirements.txt        # 依賴列表
-├── README.md               # 入口說明（本文件）
-│
-├── notebooks/              # 主要進入點
-│   ├── 1_build_index.ipynb # 初始化資料庫、讀檔、建立向量索引
-│   └── 2_query_verify.ipynb# 載入 Agent、檢索並驗證回答
-│
-└── rag_system/             # 核心程式庫
-    ├── config.py           # RAGConfig 統一配置
-    ├── common.py           # 共用工具 (Log, LocalApiEmbeddings)
-    ├── domain/             # 領域模型
-    ├── infrastructure/     # 資料庫實作
-    ├── application/        # 用例層 (索引、檢索、切塊)
-    ├── tool/               # LangGraph 工具
-    └── workflow.py         # Notebook/服務的流程入口
+├── docker-compose.yaml
+├── requirements.txt
+├── notebooks/              # 互動入口
+│   ├── 1_build_index.ipynb
+│   └── 2_query_verify.ipynb
+├── rag_system/             # 核心程式庫
+│   ├── config.py           # RAGConfig
+│   ├── workflow.py         # LangGraph workflow helper
+│   ├── node.py             # ReAct node + fallback
+│   ├── tool/               # router/retrieve/metadata/article tools
+│   ├── application/        # indexing/retrieval use cases
+│   ├── infrastructure/     # Postgres/pgvector 存取
+│   └── domain/             # entities/value objects
+├── data/                   # 預設輸入/樣例資料目錄
+├── docs/                   # 開發與治理文件
+└── tests/                  # pytest suites
 ```
 
 ---
 
-## 📖 Usage
-
-- **Notebook 入口**：
-  - `notebooks/1_build_index.ipynb`：直接呼叫 `rag_system` 模組初始化階層式 Schema、收集文件並建立索引（預設批次目錄 `data/input`，可在 Notebook 調整）。Notebook 首段會將 repo root 與 `venv` 的 site-packages 加入 `sys.path`。
-  - `notebooks/2_query_verify.ipynb`：載入 `rag_system.workflow`，執行檢索與回答驗證（同樣在開頭將 repo root 與 `venv` site-packages 加入 `sys.path`）。
-- **CLI / Service 入口（非 Notebook）**：
-  - 單次查詢：`python -m rag_system.cli query "你的問題"`（可加 `--hierarchical`）。
-  - 簡易 HTTP 服務：`python -m rag_system.cli serve --port 8080`，POST `/query`，payload `{ "question": "..." }`。
-  - Shell 包裝：`./query.sh "你的問題"` 會自動呼叫上述 CLI。
+## 📐 架構概要
+- 單一 LangGraph ReAct Agent：router → retrieval → 回答 + 參考資料。
+- 預設使用階層式檢索（兩階段摘要→細節）；可切換 legacy 平lat 檢索。
+- 詳細流程與模組說明：`docs/DEVELOPER_GUIDE.md`。
 
 ---
 
-## 🔀 Hierarchical Migration (簡版)
-
-透過 `notebooks/1_build_index.ipynb` 直接初始化階層式 Schema 並索引文件；如需重新索引，設定 `force_reindex=True` 即可。舊版 CLI/scripts 已移除。
-
----
-
-## 📐 Architecture (概要)
-
-```mermaid
-graph TB
-    Start([User Query]) --> Agent[ReAct Agent]
-    subgraph "Legal Document Query Flow"
-        Agent --> Think[LLM Reasoning]
-        Think --> Action{Select Action}
-        Action -->|Route| RouterTool[select_collection]
-        Action -->|Retrieve| RetrieveTool[retrieve_documents]
-        Action -->|Search| MetadataTool[metadata_search]
-        Action -->|Calculate| CalcTool[calculator_tool]
-        RouterTool --> Observe[Observe Results]
-        RetrieveTool --> Observe
-        MetadataTool --> Observe
-        CalcTool --> Observe
-        Observe --> Think
-        Action -->|Finish| Generate[Answer w/ Citations]
-    end
-    Generate --> End([Return Result])
-    style Agent fill:#95e1d3
-    style End fill:#f38181
-```
-
-如需更深入的模組與流程說明，請參考 `docs/DEVELOPER_GUIDE.md`。
-
----
+## 相關文件
+- `AGENT.md`：唯一技術指引與開發哲學。
+- `docs/DEVELOPER_GUIDE.md`：深入架構與模組說明。
+- `CLAUDE.md`：與本專案互動的注意事項（將保留為精簡版）。
+- `docs/governance/`：治理與 ISO/IEC 42001 相關文件。
 
 **Last Updated**: 2025-10-08
