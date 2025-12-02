@@ -15,7 +15,7 @@ import os
 # ============================================================================
 
 # Default number of documents to retrieve
-DEFAULT_TOP_K = 10
+DEFAULT_TOP_K = 5
 
 # Maximum number of documents to retrieve (safety limit)
 MAX_TOP_K = 20

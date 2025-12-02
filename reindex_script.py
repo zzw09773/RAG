@@ -45,16 +45,15 @@ index_use_case = IndexDocumentUseCase(
 )
 bulk_index = BulkIndexUseCase(index_use_case)
 
-# Define files to index
-files = [
-    repo_root / "data/converted_md/陸海空軍懲罰法.md",
-    # Add others if needed
-]
+# Define files to index - Automatically scan directory
+data_dir = repo_root / "data/converted_md"
+files = list(data_dir.glob("*.md"))
 
 valid_files = [f for f in files if f.exists()]
 
 if valid_files:
-    print(f"Indexing {len(valid_files)} files...")
+    print(f"Found {len(valid_files)} Markdown files in {data_dir}")
+    print(f"Indexing files: {[f.name for f in valid_files]}")
     bulk_index.execute(valid_files, force_reindex=True, skip_errors=False)
 else:
-    print(f"No files found to index. Checked: {[str(f) for f in files]}")
+    print(f"No Markdown files found in {data_dir}")

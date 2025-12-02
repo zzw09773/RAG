@@ -19,6 +19,8 @@ langgraph>=0.2.20
 # HTTP & API
 requests>=2.25.0
 httpx>=0.24.0
+fastapi
+uvicorn
 
 # Utilities
 python-dotenv>=1.0.0
