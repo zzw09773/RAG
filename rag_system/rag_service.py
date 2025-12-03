@@ -13,20 +13,16 @@ from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_openai import OpenAIEmbeddings
 from langchain_postgres.vectorstores import PGVector
+from langchain.retrievers import ParentDocumentRetriever
 
-# Handle ParentDocumentRetriever location change in LangChain 1.1.0
-try:
-    # Try new location (LangChain 1.1.0+)
-    from langchain_classic.retrievers import ParentDocumentRetriever
-except ImportError:
-    try:
-        # Try old location (LangChain < 1.0)
-        from langchain.retrievers import ParentDocumentRetriever
-    except ImportError:
-        # Fallback or re-raise if truly missing
-        raise ImportError("Could not import ParentDocumentRetriever from langchain or langchain_classic")
-
+# Standard imports for LangChain 0.3.0
 from langchain.storage import LocalFileStore, EncoderBackedStore
+# Note: In some 0.3.x versions, these might be in langchain.storage.file_system
+# but langchain.storage usually re-exports them or provides backward compat.
+# If this fails, we will need to be specific:
+# from langchain.storage.file_system import LocalFileStore
+# from langchain.storage.encoder_backed import EncoderBackedStore
+
 from langchain_core.load import dumps, loads
 import shutil
 
