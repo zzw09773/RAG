@@ -13,13 +13,7 @@ from langchain_openai import ChatOpenAI
 from .agent import build_workflow
 from .config import RAGConfig
 from .node import create_agent_node
-from .tool import (
-    create_article_lookup_tool,
-    create_metadata_search_tool,
-    create_retrieve_tool,
-    create_router_tool,
-)
-from .tool.retrieve_hierarchical import create_hybrid_retrieve_tool
+from .tool.rag_tool import create_rag_tool
 from .common import log
 
 
@@ -47,50 +41,19 @@ def create_llm(config: RAGConfig) -> ChatOpenAI:
 def _build_tools(
     llm: ChatOpenAI,
     config: RAGConfig,
-    *,
-    use_hierarchical: bool = False,
 ) -> List[callable]:
     """Create the set of LangChain tools used by the agent."""
-    router_tool = create_router_tool(llm, config.conn_string)
-
-    if use_hierarchical:
-        retrieval_tool = create_hybrid_retrieve_tool(
-            conn_str=config.conn_string,
-            embed_api_base=config.embed_api_base,
-            embed_api_key=config.embed_api_key,
-            embed_model=config.embed_model,
-            verify_ssl=config.verify_ssl,
-            top_k=config.top_k,
-            content_max_length=config.content_max_length,
-            use_hierarchical=True,
-        )
-    else:
-        retrieval_tool = create_retrieve_tool(
-            conn_str=config.conn_string,
-            embed_api_base=config.embed_api_base,
-            embed_api_key=config.embed_api_key,
-            embed_model=config.embed_model,
-            verify_ssl=config.verify_ssl,
-            top_k=config.top_k,
-            content_max_length=config.content_max_length,
-        )
-
-    metadata_tool = create_metadata_search_tool(conn_str=config.conn_string)
-    article_lookup_tool = create_article_lookup_tool(conn_str=config.conn_string)
-
-    return [
-        router_tool,
-        retrieval_tool,
-        metadata_tool,
-        article_lookup_tool,
-    ]
+    # Refactored to use only the unified RAG tool
+    rag_tool = create_rag_tool(config)
+    
+    return [rag_tool]
 
 
 def create_rag_workflow(
     config: RAGConfig,
     *,
     llm: Optional[ChatOpenAI] = None,
-    use_hierarchical: bool = True,
+    use_hierarchical: bool = True, # Kept for compatibility signature, but unused
 ):
     """Create and compile the LangGraph workflow for notebooks or services."""
     config.validate()
@@ -98,7 +61,7 @@ def create_rag_workflow(
     if llm is None:
         llm = create_llm(config)
 
-    tools = _build_tools(llm, config, use_hierarchical=use_hierarchical)
+    tools = _build_tools(llm, config)
     general_agent_node = create_agent_node(llm, tools)
     return build_workflow(general_agent_node)
 
@@ -109,7 +72,7 @@ def run_query(
     *,
     llm: Optional[ChatOpenAI] = None,
     messages: Optional[list] = None,
-    use_hierarchical: bool = True,
+    use_hierarchical: bool = True, # Kept for compatibility signature, but unused
 ):
     """Execute a single query through the workflow and return the state."""
     workflow = create_rag_workflow(

@@ -7,14 +7,21 @@ python-docx>=1.0.0
 psycopg2-binary>=2.9.9
 pgvector>=0.2.0
 
-# LangChain & LangGraph
-langchain>=0.3.0
-langchain-text-splitters>=0.3.0
-langchain-core>=0.3.0
-langchain-community>=0.3.0
-langchain-postgres>=0.0.12
-langchain-openai>=0.2.0
-langgraph>=0.2.20
+# LangChain Ecosystem (Pinned for Stability)
+# Using 0.3.x series which is stable and compatible
+langchain==0.3.0
+langchain-core==0.3.0
+langchain-community==0.3.0
+langchain-text-splitters==0.3.0
+langchain-openai==0.2.1
+langchain-postgres==0.0.12
+
+# Orchestration
+langgraph==0.2.20
+
+# Core Dependencies
+pydantic>=2.7.4,<2.10.0
+numpy<2.0.0
 
 # HTTP & API
 requests>=2.25.0
@@ -25,5 +32,4 @@ uvicorn
 # Utilities
 python-dotenv>=1.0.0
 orjson>=3.10.0
-numpy>=1.24.0
 tiktoken>=0.7.0

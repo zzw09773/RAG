@@ -55,3 +55,6 @@ rag_system/documents/
 
 # Jupyter Notebook
 .ipynb_checkpoints/
+
+.gemini/
+gha-creds-*.json

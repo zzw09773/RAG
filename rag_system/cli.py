@@ -165,6 +165,9 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> None:
+    from dotenv import load_dotenv
+    load_dotenv(override=True)
+    
     parser = build_parser()
     args = parser.parse_args(argv)
     args.func(args)
